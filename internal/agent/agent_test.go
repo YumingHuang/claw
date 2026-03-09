@@ -1,0 +1,231 @@
+package agent
+
+import (
+	"context"
+	"encoding/json"
+	"testing"
+
+	"github.com/mingminliu/claw/internal/llm"
+	"github.com/mingminliu/claw/internal/models"
+	"github.com/mingminliu/claw/internal/tools"
+)
+
+// --- fake provider ---
+
+type fakeProvider struct {
+	name      string
+	responses []*llm.ChatResponse
+	callIndex int
+}
+
+func (f *fakeProvider) Name() string { return f.name }
+
+func (f *fakeProvider) Chat(_ context.Context, _ *llm.ChatRequest) (*llm.ChatResponse, error) {
+	if f.callIndex >= len(f.responses) {
+		return &llm.ChatResponse{Content: "fallback response"}, nil
+	}
+	resp := f.responses[f.callIndex]
+	f.callIndex++
+	return resp, nil
+}
+
+func (f *fakeProvider) ChatStream(_ context.Context, _ *llm.ChatRequest) (<-chan llm.StreamChunk, error) {
+	ch := make(chan llm.StreamChunk, 1)
+	ch <- llm.StreamChunk{Delta: "streamed", Done: true}
+	close(ch)
+	return ch, nil
+}
+
+// --- fake tool for agent tests ---
+
+type echoTool struct{}
+
+func (e *echoTool) Name() string                { return "echo" }
+func (e *echoTool) Description() string         { return "echoes input" }
+func (e *echoTool) Parameters() json.RawMessage { return json.RawMessage(`{"type":"object"}`) }
+func (e *echoTool) Execute(_ context.Context, params json.RawMessage) (models.ToolResult, error) {
+	return models.ToolResult{Content: "echo: " + string(params)}, nil
+}
+
+type failTool struct{}
+
+func (f *failTool) Name() string                { return "fail_tool" }
+func (f *failTool) Description() string         { return "always fails" }
+func (f *failTool) Parameters() json.RawMessage { return json.RawMessage(`{"type":"object"}`) }
+func (f *failTool) Execute(_ context.Context, _ json.RawMessage) (models.ToolResult, error) {
+	return models.ToolResult{Content: "something went wrong", IsError: true}, nil
+}
+
+func newTestRegistry(tt ...tools.Tool) *tools.Registry {
+	r := tools.NewRegistry()
+	for _, t := range tt {
+		_ = r.Register(t)
+	}
+	return r
+}
+
+func TestRun_SimpleTextResponse(t *testing.T) {
+	provider := &fakeProvider{
+		name:      "fake",
+		responses: []*llm.ChatResponse{{Content: "Hello!", FinishReason: "stop"}},
+	}
+	agent := NewAgent(provider, newTestRegistry(), AgentOptions{
+		SystemPrompt:  "you are helpful",
+		MaxIterations: 10,
+		ContextWindow: 100000,
+	})
+	session := NewSession("s1", "test")
+
+	result, err := agent.Run(context.Background(), session, "Hi")
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if result != "Hello!" {
+		t.Errorf("result = %q, want %q", result, "Hello!")
+	}
+	if len(session.Messages) != 2 {
+		t.Errorf("session messages = %d, want 2 (user + assistant)", len(session.Messages))
+	}
+}
+
+func TestRun_SingleToolCall(t *testing.T) {
+	provider := &fakeProvider{
+		name: "fake",
+		responses: []*llm.ChatResponse{
+			{
+				ToolCalls: []models.ToolCall{
+					{ID: "call_1", Name: "echo", Arguments: json.RawMessage(`{"input":"test"}`)},
+				},
+				FinishReason: "tool_calls",
+			},
+			{Content: "The echo returned: echo: test", FinishReason: "stop"},
+		},
+	}
+	agent := NewAgent(provider, newTestRegistry(&echoTool{}), AgentOptions{
+		SystemPrompt:  "you are helpful",
+		MaxIterations: 10,
+		ContextWindow: 100000,
+	})
+	session := NewSession("s1", "test")
+
+	result, err := agent.Run(context.Background(), session, "echo something")
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if result != "The echo returned: echo: test" {
+		t.Errorf("result = %q", result)
+	}
+	// user + assistant(tool_call) + tool_result + assistant(final)
+	if len(session.Messages) != 4 {
+		t.Errorf("session messages = %d, want 4", len(session.Messages))
+	}
+}
+
+func TestRun_MultipleToolCalls(t *testing.T) {
+	provider := &fakeProvider{
+		name: "fake",
+		responses: []*llm.ChatResponse{
+			{
+				ToolCalls: []models.ToolCall{
+					{ID: "call_1", Name: "echo", Arguments: json.RawMessage(`{"a":"1"}`)},
+					{ID: "call_2", Name: "echo", Arguments: json.RawMessage(`{"b":"2"}`)},
+				},
+				FinishReason: "tool_calls",
+			},
+			{Content: "done", FinishReason: "stop"},
+		},
+	}
+	agent := NewAgent(provider, newTestRegistry(&echoTool{}), AgentOptions{
+		SystemPrompt:  "sys",
+		MaxIterations: 10,
+		ContextWindow: 100000,
+	})
+	session := NewSession("s1", "test")
+
+	result, err := agent.Run(context.Background(), session, "multi")
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if result != "done" {
+		t.Errorf("result = %q, want %q", result, "done")
+	}
+	// user + assistant(tool_calls) + tool1 + tool2 + assistant(final)
+	if len(session.Messages) != 5 {
+		t.Errorf("session messages = %d, want 5", len(session.Messages))
+	}
+}
+
+func TestRun_MaxIterationsExceeded(t *testing.T) {
+	// Provider always returns a tool call
+	toolCallResp := &llm.ChatResponse{
+		ToolCalls:    []models.ToolCall{{ID: "call_x", Name: "echo", Arguments: json.RawMessage(`{}`)}},
+		FinishReason: "tool_calls",
+	}
+	responses := make([]*llm.ChatResponse, 20)
+	for i := range responses {
+		responses[i] = toolCallResp
+	}
+	provider := &fakeProvider{name: "fake", responses: responses}
+
+	agent := NewAgent(provider, newTestRegistry(&echoTool{}), AgentOptions{
+		SystemPrompt:  "sys",
+		MaxIterations: 3,
+		ContextWindow: 100000,
+	})
+	session := NewSession("s1", "test")
+
+	_, err := agent.Run(context.Background(), session, "loop")
+	if err == nil {
+		t.Fatal("expected error for max iterations exceeded")
+	}
+}
+
+func TestRun_ToolExecutionError(t *testing.T) {
+	provider := &fakeProvider{
+		name: "fake",
+		responses: []*llm.ChatResponse{
+			{
+				ToolCalls:    []models.ToolCall{{ID: "call_1", Name: "fail_tool", Arguments: json.RawMessage(`{}`)}},
+				FinishReason: "tool_calls",
+			},
+			{Content: "I see the tool failed", FinishReason: "stop"},
+		},
+	}
+	agent := NewAgent(provider, newTestRegistry(&failTool{}), AgentOptions{
+		SystemPrompt:  "sys",
+		MaxIterations: 10,
+		ContextWindow: 100000,
+	})
+	session := NewSession("s1", "test")
+
+	result, err := agent.Run(context.Background(), session, "do something")
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if result != "I see the tool failed" {
+		t.Errorf("result = %q", result)
+	}
+}
+
+func TestRun_ContextCancelled(t *testing.T) {
+	provider := &fakeProvider{
+		name:      "fake",
+		responses: []*llm.ChatResponse{{Content: "should not reach"}},
+	}
+
+	// Cancel context before calling Run
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	agent := NewAgent(provider, newTestRegistry(), AgentOptions{
+		SystemPrompt:  "sys",
+		MaxIterations: 10,
+		ContextWindow: 100000,
+	})
+	session := NewSession("s1", "test")
+
+	_, err := agent.Run(ctx, session, "hello")
+	if err == nil {
+		t.Fatal("expected error for cancelled context")
+	}
+}

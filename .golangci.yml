@@ -1,0 +1,16 @@
+linters:
+  enable:
+    - govet
+    - errcheck
+    - staticcheck
+    - gosimple
+    - ineffassign
+    - unused
+    - gofmt
+    - goimports
+    - gosec
+    - misspell
+linters-settings:
+  gosec:
+    excludes:
+      - G104

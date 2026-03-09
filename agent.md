@@ -26,7 +26,7 @@ claw/
 │   ├── agent/                 # 执行面：Agent 循环、排队
 │   ├── llm/                   # 能力层：Provider 抽象与实现
 │   ├── tools/                 # 能力层：工具接口、注册表、实现
-│   ├── channels/              # 入口层：HTTP/WebSocket/Telegram 适配器
+│   ├── channels/              # 入口层：HTTP/WebSocket/Feishu 适配器
 │   └── models/                # 内部数据结构（Message、Error、Request）
 ├── configs/                   # 配置文件示例
 ├── scripts/                   # 脚本（冒烟测试等）
@@ -172,7 +172,7 @@ claw/
 | YAML | `gopkg.in/yaml.v3` |
 | 测试 | `github.com/stretchr/testify` |
 | UUID | `github.com/google/uuid` |
-| Telegram | `gopkg.in/telebot.v3` |
+| Feishu | `github.com/larksuite/oapi-sdk-go/v3` |
 | SQLite | `modernc.org/sqlite` |
 | Metrics | `github.com/prometheus/client_golang` |
 

@@ -39,7 +39,7 @@
 
 | 层级 | 名称 | 职责 |
 |------|------|------|
-| **入口层 (Ingress)** | 通道与接入 | 接收用户消息：Telegram/WhatsApp/Discord/HTTP/WebSocket/CLI 等，将消息标准化后送入内核 |
+| **入口层 (Ingress)** | 通道与接入 | 接收用户消息：飞书/WhatsApp/Discord/HTTP/WebSocket/CLI 等，将消息标准化后送入内核 |
 | **控制面 (Control Plane)** | 网关 / 协调 | 长驻核心进程：会话管理、鉴权、通道与 Provider 连接管理、对外暴露 WebSocket/HTTP API |
 | **执行面 (Execution Plane)** | Agent 运行时 | 运行 Agent 循环：路由到会话、排队、调用 LLM、执行工具、重试与故障转移 |
 | **能力层 (Capability)** | 工具与模型 | 工具实现（文件、命令、搜索、记忆等）；多 LLM Provider 抽象与切换、故障转移 |
@@ -102,7 +102,7 @@
 ### 3.2 第二期（多通道与多模型）
 
 - **WebSocket 通道**：双向实时通信，支持打字状态推送
-- **Telegram 通道**：长轮询或 Webhook 模式
+- **飞书通道**：通过飞书开放平台事件订阅接收消息
 - **多模型**：多 Provider 配置与自动故障转移（主→备）
 - **工具扩展**：`web_search`、`memory_get/set`（键值记忆，按 namespace 隔离）
 - **技能/插件**：从目录加载技能配置（YAML + Markdown），将 instructions 注入系统提示
@@ -135,7 +135,7 @@
 | 概念 | 说明 | 生命周期 |
 |------|------|----------|
 | **Session** | 一次用户对话上下文，由 `session_id` 标识 | 创建 → 活跃 → 过期回收 |
-| **Channel** | 消息入口适配器（HTTP、WebSocket、Telegram 等） | 随进程启停 |
+| **Channel** | 消息入口适配器（HTTP、WebSocket、飞书等） | 随进程启停 |
 | **Provider** | LLM 服务提供方，实现统一聊天接口 | 配置加载时初始化 |
 | **Tool** | Agent 可调用的原子能力 | 注册后常驻 |
 | **Skill** | 工具的使用说明 + 提示词集合（第二期） | 启动时从目录加载 |
@@ -449,10 +449,10 @@ channels:
   websocket:
     enabled: false
     ping_interval: 30s
-  telegram:
+  feishu:
     enabled: false
-    token: "${TELEGRAM_BOT_TOKEN}"
-    allowed_users: []                    # 空=允许所有，否则为 Telegram user ID 白名单
+    app_id: "${FEISHU_APP_ID}"
+    app_secret: "${FEISHU_APP_SECRET}"
 
 auth:
   enabled: false

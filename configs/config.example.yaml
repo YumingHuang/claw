@@ -1,0 +1,100 @@
+# Claw 配置文件示例
+# 复制此文件为 config.yaml 并根据需要修改
+# 支持环境变量替换：${VAR_NAME} 会被替换为对应环境变量的值
+
+server:
+  host: "0.0.0.0"          # 监听地址
+  port: 8080               # 监听端口
+  read_timeout: 30s        # HTTP 读超时
+  write_timeout: 120s      # HTTP 写超时（需留足 LLM 响应时间）
+  shutdown_timeout: 15s    # 优雅关闭超时
+
+log:
+  level: "info"            # 日志级别：debug | info | warn | error
+  format: "json"           # 日志格式：json | text
+  output: "stdout"         # 日志输出：stdout | stderr | 文件路径
+
+# 系统 Prompt，定义 AI 助手的行为
+system_prompt: |
+  你是 Claw，一个由 Go 实现的个人 AI 助手。
+  你应该简洁、准确地回答问题。
+  当你不确定时，坦诚告知用户。
+
+session:
+  ttl: 1h                 # 会话过期时间
+  max_history: 100        # 最大历史消息条数
+  cleanup_interval: 5m    # 过期会话清理间隔
+
+providers:
+  default: "openai"       # 默认使用的 provider 名称
+  list:
+    # OpenAI 兼容接口（如 OpenAI、Azure OpenAI、本地 Ollama 等）
+    - name: "openai"
+      type: "openai_compatible"
+      base_url: "https://api.openai.com/v1"
+      api_key: "${OPENAI_API_KEY}"      # 支持环境变量引用
+      model: "gpt-4o"
+      max_tokens: 4096
+      temperature: 0.7
+      timeout: 60s
+      context_window: 128000            # 模型上下文窗口大小
+
+    # 备用 Provider（可选）
+    - name: "backup"
+      type: "openai_compatible"
+      base_url: "https://api.backup.com/v1"
+      api_key: "${BACKUP_API_KEY}"
+      model: "gpt-4o-mini"
+      max_tokens: 4096
+      temperature: 0.7
+      timeout: 30s
+      context_window: 128000
+
+  # 故障转移顺序：当主 provider 失败时，依次尝试以下 provider
+  fallback_order: ["openai", "backup"]
+
+  # 重试配置
+  retry:
+    max_attempts: 2        # 最大重试次数
+    backoff: "1s"          # 指数退避基础间隔
+
+tools:
+  workdir: "/home/user/workspace"       # 文件操作沙箱根目录（必须是绝对路径）
+  allowed_commands:                      # run_command 工具的命令白名单
+    - "ls"
+    - "cat"
+    - "date"
+    - "wc"
+    - "head"
+    - "tail"
+    - "grep"
+    - "find"
+  max_output_chars: 10000               # 工具输出最大字符数
+  timeout: 30s                           # 单次工具调用超时
+  max_iterations: 10                     # Agent 循环最大轮数
+
+channels:
+  # HTTP 通道配置
+  http:
+    enabled: true
+
+  # WebSocket 通道配置
+  websocket:
+    enabled: false
+    ping_interval: 30s                   # WebSocket 心跳间隔
+
+  # 飞书 Bot 通道配置
+  feishu:
+    enabled: false
+    app_id: "${FEISHU_APP_ID}"           # 飞书应用 App ID
+    app_secret: "${FEISHU_APP_SECRET}"   # 飞书应用 App Secret
+
+auth:
+  enabled: false                          # 是否启用 API Key 认证
+  api_keys:
+    - "${CLAW_API_KEY}"                  # 允许的 API Key 列表
+
+rate_limit:
+  enabled: false                          # 是否启用速率限制
+  requests_per_minute: 30                # 每分钟最大请求数
+  burst: 5                               # 突发请求允许的并发数

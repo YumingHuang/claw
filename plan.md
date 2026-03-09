@@ -14,7 +14,7 @@
 |------|------|----------|----------|
 | **Phase 0** | 项目骨架与约定 | 1～2 天 | `go build` 成功，配置加载并打印，单元测试通过 |
 | **Phase 1** | 内核与单通道 MVP | 1～2 周 | curl 发消息→收到 LLM 回复，工具调用正常，流式输出可用 |
-| **Phase 2** | 多通道与多模型 | 1～2 周 | Telegram 或 WebSocket 通道可用，故障转移正常，技能加载生效 |
+| **Phase 2** | 多通道与多模型 | 1～2 周 | 飞书或 WebSocket 通道可用，故障转移正常，技能加载生效 |
 | **Phase 3** | 安全与运维 | 1 周 | Docker 构建通过，鉴权生效，审计日志可查，metrics 可抓取 |
 
 ---
@@ -265,12 +265,12 @@ claw/
   - 心跳：定时 ping/pong，超时断开
   - 连接管理：按 session_id 关联，同 session 多连接广播
 
-#### T2.5 Telegram Channel（依赖 T2.3）
-- [ ] 实现 `internal/channels/telegram.go`：
-  - 长轮询模式（`getUpdates`），可选 Webhook 模式
+#### T2.5 飞书 Channel（依赖 T2.3）
+- [ ] 实现 `internal/channels/feishu.go`：
+  - 通过飞书开放平台事件订阅接收消息
   - 接收文本消息 → 以 chat_id 作为 session_id → 调用 Gateway → 回发文本
-  - 配置 `allowed_users` 白名单过滤
-  - 长消息分段发送（Telegram 单消息限 4096 字符）
+  - 使用飞书 SDK（`github.com/larksuite/oapi-sdk-go/v3`）
+  - 长消息分段发送
 
 ### 5.3 工具扩展
 
@@ -340,9 +340,8 @@ claw/
   - `auth.enabled: false` 时跳过鉴权
   - 未通过 → 返回 401 统一错误格式
 
-#### T3.2 Telegram 签名校验（依赖 T2.5）
-- [ ] Webhook 模式下校验 Telegram 请求签名
-- [ ] 长轮询模式下信任 bot token 即可
+#### T3.2 飞书签名校验（依赖 T2.5）
+- [ ] 校验飞书事件订阅的请求签名（Verification Token / Encrypt Key）
 
 ### 6.2 速率限制
 
@@ -409,7 +408,7 @@ claw/
 | WebSocket | `github.com/coder/websocket` | 维护活跃 |
 | YAML 解析 | `gopkg.in/yaml.v3` | 标准 |
 | HTTP 客户端 | `net/http`（标准库） | 无需额外依赖 |
-| Telegram | `gopkg.in/telebot.v3` | API 简洁 |
+| 飞书 | `github.com/larksuite/oapi-sdk-go/v3` | 官方 SDK |
 | 日志 | `log/slog`（标准库） | Go 1.22+ 内置 |
 | 测试 | `github.com/stretchr/testify` | 断言与 mock |
 | SQLite | `modernc.org/sqlite` | 纯 Go、无 CGO |
@@ -427,7 +426,7 @@ claw/
 | 单元测试 | 函数/方法级，mock 外部依赖 | `testing` + `testify` | 每次提交 |
 | 集成测试 | 模块间交互（如 Agent + mock Provider） | `testing` + `httptest` | 每次提交 |
 | 冒烟测试 | 启动完整服务 → curl 验证 | `scripts/test_smoke.sh` | 发布前 |
-| 手动测试 | 真实 LLM Provider 端到端 | curl / Telegram | 里程碑结束 |
+| 手动测试 | 真实 LLM Provider 端到端 | curl / 飞书 | 里程碑结束 |
 
 ### 8.2 关键测试用例（最低要求）
 
@@ -511,7 +510,7 @@ jobs:
 - [ ] README 包含完整的「克隆→配置→构建→运行→测试」步骤
 
 ### Phase 2 验收
-- [ ] 至少一个新通道（WebSocket 或 Telegram）可正常收发消息
+- [ ] 至少一个新通道（WebSocket 或飞书）可正常收发消息
 - [ ] 主 Provider 模拟故障后，自动切换到备用 Provider
 - [ ] 技能加载生效，instructions 出现在系统提示中
 
@@ -543,7 +542,7 @@ Phase 2:  T1.* ──→ T2.1
           T1.4 ──→ T2.6, T2.7, T2.8, T2.9
 
 Phase 3:  T1.* ──→ T3.1, T3.3, T3.4, T3.6, T3.7, T3.8
-          T2.5 ──→ T3.2
+          T2.5 ──→ T3.2  (飞书签名校验)
           T1.8 ──→ T3.5
 ```
 

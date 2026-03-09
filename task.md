@@ -11,19 +11,19 @@
 
 **预估**：30 分钟 | **前置**：无 | **产出**：可编译的空项目
 
-- [ ] **T0.1.1** 初始化 Go module
+- [x] **T0.1.1** 初始化 Go module
   ```bash
   go mod init github.com/mingminliu/claw
   ```
 
-- [ ] **T0.1.2** 创建目录结构
+- [x] **T0.1.2** 创建目录结构
   ```bash
   mkdir -p cmd/claw
   mkdir -p internal/{config,gateway,agent,llm,tools,channels,models}
   mkdir -p configs scripts
   ```
 
-- [ ] **T0.1.3** 创建 `cmd/claw/main.go` 占位入口
+- [x] **T0.1.3** 创建 `cmd/claw/main.go` 占位入口
   ```go
   package main
 
@@ -37,7 +37,7 @@
   ```
   **完成标准**：`go run ./cmd/claw` 输出 `claw 0.1.0`
 
-- [ ] **T0.1.4** 创建 `.gitignore`
+- [x] **T0.1.4** 创建 `.gitignore`
   ```
   bin/
   *.exe
@@ -48,7 +48,7 @@
   .DS_Store
   ```
 
-- [ ] **T0.1.5** 创建 `Makefile`
+- [x] **T0.1.5** 创建 `Makefile`
   ```makefile
   .PHONY: build run test lint coverage clean
 
@@ -73,7 +73,7 @@
   ```
   **完成标准**：`make build && ./bin/claw` 输出版本号
 
-- [ ] **T0.1.6** 初始化 git 仓库
+- [x] **T0.1.6** 初始化 git 仓库
   ```bash
   git init && git add . && git commit -m "init: project skeleton"
   ```
@@ -84,12 +84,12 @@
 
 **预估**：2 小时 | **前置**：T0.1 | **产出**：可从 YAML + ENV 加载完整配置的 config 包
 
-- [ ] **T0.2.1** 添加 YAML 依赖
+- [x] **T0.2.1** 添加 YAML 依赖
   ```bash
   go get gopkg.in/yaml.v3
   ```
 
-- [ ] **T0.2.2** 创建 `internal/config/config.go` — Config 结构体
+- [x] **T0.2.2** 创建 `internal/config/config.go` — Config 结构体
   - 文件：`internal/config/config.go`
   - 定义以下结构体（与 spec.md §6 对应）：
     ```go
@@ -160,7 +160,7 @@
     type ChannelsConfig struct {
         HTTP      HTTPChannelConfig      `yaml:"http"`
         WebSocket WebSocketChannelConfig `yaml:"websocket"`
-        Telegram  TelegramChannelConfig  `yaml:"telegram"`
+        Feishu    FeishuChannelConfig    `yaml:"feishu"`
     }
 
     type HTTPChannelConfig struct {
@@ -172,7 +172,7 @@
         PingInterval time.Duration `yaml:"ping_interval"`
     }
 
-    type TelegramChannelConfig struct {
+    type FeishuChannelConfig struct {
         Enabled      bool     `yaml:"enabled"`
         Token        string   `yaml:"token"`
         AllowedUsers []int64  `yaml:"allowed_users"`
@@ -190,7 +190,7 @@
     }
     ```
 
-- [ ] **T0.2.3** 实现 `Load` 函数
+- [x] **T0.2.3** 实现 `Load` 函数
   - 文件：`internal/config/config.go`（追加）
   - 签名：`func Load(path string) (*Config, error)`
   - 逻辑：
@@ -213,7 +213,7 @@
     - 每个 provider 的 `api_key` 和 `base_url` 不能为空
     - `tools.workdir` 若非空则必须是绝对路径
 
-- [ ] **T0.2.4** 编写 `internal/config/config_test.go`
+- [x] **T0.2.4** 编写 `internal/config/config_test.go`
   - 测试用例：
     1. `TestLoad_ValidConfig` — 加载完整 YAML，验证所有字段正确
     2. `TestLoad_Defaults` — 加载最小 YAML（只有 providers），验证默认值
@@ -224,7 +224,7 @@
   - 辅助：在 `testdata/` 目录放测试用的 YAML 文件
   - **完成标准**：`go test ./internal/config/ -v` 全部 PASS
 
-- [ ] **T0.2.5** 创建 `configs/config.example.yaml`
+- [x] **T0.2.5** 创建 `configs/config.example.yaml`
   - 内容对应 spec.md §6 的完整 YAML，每个字段加中文注释
   - **完成标准**：`Load("configs/config.example.yaml")` 不报错（需设置相应环境变量或将 api_key 设为占位值）
 
@@ -234,7 +234,7 @@
 
 **预估**：1 小时 | **前置**：T0.1 | **产出**：models 包，供其他模块引用
 
-- [ ] **T0.3.1** 创建 `internal/models/message.go`
+- [x] **T0.3.1** 创建 `internal/models/message.go`
   - 文件：`internal/models/message.go`
   - 定义：
     ```go
@@ -265,7 +265,7 @@
     ```
   - 提供工厂函数：`NewUserMessage(content)`, `NewAssistantMessage(content)`, `NewSystemMessage(content)`, `NewToolResultMessage(toolCallID, result)`
 
-- [ ] **T0.3.2** 创建 `internal/models/errors.go`
+- [x] **T0.3.2** 创建 `internal/models/errors.go`
   - 文件：`internal/models/errors.go`
   - 定义：
     ```go
@@ -293,7 +293,7 @@
     func NewAPIError(base *APIError, message string) *APIError { ... }
     ```
 
-- [ ] **T0.3.3** 创建 `internal/models/request.go`
+- [x] **T0.3.3** 创建 `internal/models/request.go`
   - 文件：`internal/models/request.go`
   - 定义：
     ```go
@@ -327,7 +327,7 @@
 
 **预估**：1 小时 | **前置**：T0.2 | **产出**：可解析 flag、加载配置并退出的 main
 
-- [ ] **T0.4.1** 更新 `cmd/claw/main.go`
+- [x] **T0.4.1** 更新 `cmd/claw/main.go`
   - 使用 `flag` 包解析 `-config` 参数（默认 `configs/config.yaml`）和 `-version` 参数
   - 调用 `config.Load(configPath)` 加载配置
   - 初始化 `slog`（根据 `cfg.Log` 选择 JSON/Text handler、设置 level）
@@ -340,7 +340,7 @@
     # 输出 claw 0.1.0
     ```
 
-- [ ] **T0.4.2** 编写 `README.md`
+- [x] **T0.4.2** 编写 `README.md`
   - 内容：
     1. 项目简介（1 段话）
     2. 特性列表
@@ -349,7 +349,7 @@
     5. 开发（make test / make lint）
     6. License 占位
 
-- [ ] **T0.4.3** 创建 `.golangci.yml`
+- [x] **T0.4.3** 创建 `.golangci.yml`
   ```yaml
   linters:
     enable:
@@ -390,7 +390,7 @@ go test ./internal/config/ -v               # ✅ 配置测试通过
 
 **预估**：30 分钟 | **前置**：T0.2, T0.3 | **产出**：`internal/llm/provider.go`
 
-- [ ] **T1.1.1** 创建 `internal/llm/provider.go`
+- [x] **T1.1.1** 创建 `internal/llm/provider.go`
   - 定义 `Provider` 接口：
     ```go
     type Provider interface {
@@ -443,12 +443,12 @@ go test ./internal/config/ -v               # ✅ 配置测试通过
 
 **预估**：4 小时 | **前置**：T1.1 | **产出**：可调用 OpenAI API 的 Provider 实现
 
-- [ ] **T1.2.1** 创建 `internal/llm/openai.go` — 结构体与构造函数
+- [x] **T1.2.1** 创建 `internal/llm/openai.go` — 结构体与构造函数
   - `OpenAIProvider` 结构体：持有 `http.Client`、`baseURL`、`apiKey`、`model`、`config`
   - `NewOpenAIProvider(cfg config.ProviderConfig) (*OpenAIProvider, error)`
   - 设置 `http.Client` 的 `Timeout` 为 `cfg.Timeout`
 
-- [ ] **T1.2.2** 实现 `Chat` 方法（非流式）
+- [x] **T1.2.2** 实现 `Chat` 方法（非流式）
   - 组装 OpenAI `/chat/completions` 请求体：
     - `model`, `messages`（转为 OpenAI 格式）, `tools`, `temperature`, `max_tokens`
     - `stream: false`
@@ -460,7 +460,7 @@ go test ./internal/config/ -v               # ✅ 配置测试通过
     - HTTP 5xx → `ErrProviderError`
     - 网络错误 / 超时 → `ErrProviderTimeout`
 
-- [ ] **T1.2.3** 实现 `ChatStream` 方法（流式）
+- [x] **T1.2.3** 实现 `ChatStream` 方法（流式）
   - 请求体加 `"stream": true, "stream_options": {"include_usage": true}`
   - 读取响应 body 为 `bufio.Scanner`，按行读取
   - 解析 SSE 格式：跳过空行和 `event:` 行，处理 `data:` 行
@@ -469,12 +469,12 @@ go test ./internal/config/ -v               # ✅ 配置测试通过
   - 最后一个 chunk 的 `usage` 字段传入
   - 错误时写入 `StreamChunk{Err: err}` 然后关闭 channel
 
-- [ ] **T1.2.4** 实现消息格式转换辅助函数
+- [x] **T1.2.4** 实现消息格式转换辅助函数
   - `func toOpenAIMessages(msgs []models.Message) []map[string]interface{}`
   - `func toOpenAITools(tools []ToolSchema) []map[string]interface{}`
   - 处理 role 映射、tool_calls 和 tool_call_id 的序列化
 
-- [ ] **T1.2.5** 创建 `internal/llm/openai_test.go`
+- [x] **T1.2.5** 创建 `internal/llm/openai_test.go`
   - 使用 `httptest.NewServer` mock OpenAI API
   - 测试用例：
     1. `TestChat_TextResponse` — 正常文本回复
@@ -492,7 +492,7 @@ go test ./internal/config/ -v               # ✅ 配置测试通过
 
 **预估**：1 小时 | **前置**：T0.3 | **产出**：token 估算与消息截断工具
 
-- [ ] **T1.3.1** 创建 `internal/llm/token.go`
+- [x] **T1.3.1** 创建 `internal/llm/token.go`
   - 实现：
     ```go
     // 简单估算：英文 4 字符 ≈ 1 token，中文 1 字 ≈ 2 token
@@ -507,7 +507,7 @@ go test ./internal/config/ -v               # ✅ 配置测试通过
     func TruncateMessages(messages []models.Message, maxTokens int) []models.Message
     ```
 
-- [ ] **T1.3.2** 创建 `internal/llm/token_test.go`
+- [x] **T1.3.2** 创建 `internal/llm/token_test.go`
   - 测试用例：
     1. `TestEstimateTokens_English` — 纯英文
     2. `TestEstimateTokens_Chinese` — 纯中文
@@ -523,7 +523,7 @@ go test ./internal/config/ -v               # ✅ 配置测试通过
 
 **预估**：1 小时 | **前置**：T0.3 | **产出**：`internal/tools/registry.go`
 
-- [ ] **T1.4.1** 创建 `internal/tools/registry.go`
+- [x] **T1.4.1** 创建 `internal/tools/registry.go`
   - 定义 `Tool` 接口：
     ```go
     type Tool interface {
@@ -547,7 +547,7 @@ go test ./internal/config/ -v               # ✅ 配置测试通过
     func (r *Registry) Schemas() []llm.ToolSchema    // 生成 OpenAI function calling 格式
     ```
 
-- [ ] **T1.4.2** 创建 `internal/tools/registry_test.go`
+- [x] **T1.4.2** 创建 `internal/tools/registry_test.go`
   - 使用一个简单的 mock tool 测试注册、查找、重名、Execute
   - **完成标准**：`go test ./internal/tools/ -v -run Registry` 全部 PASS
 
@@ -557,12 +557,12 @@ go test ./internal/config/ -v               # ✅ 配置测试通过
 
 **预估**：3 小时 | **前置**：T1.4, T0.2 | **产出**：4 个可用的工具
 
-- [ ] **T1.5.1** 实现 `internal/tools/time.go` — `get_current_time`
+- [x] **T1.5.1** 实现 `internal/tools/time.go` — `get_current_time`
   - 参数 schema：`{"type": "object", "properties": {"timezone": {"type": "string", "description": "IANA 时区，如 Asia/Shanghai"}}, "required": []}`
   - Execute：解析 timezone（默认 Local）→ `time.Now().In(loc).Format(time.RFC3339)`
   - 返回 `ToolResult{Content: "2026-03-06T18:30:00+08:00"}`
 
-- [ ] **T1.5.2** 实现 `internal/tools/file.go` — `read_file`
+- [x] **T1.5.2** 实现 `internal/tools/file.go` — `read_file`
   - 构造函数接收 `workdir string` 和 `maxOutputChars int`
   - 参数 schema：`{"properties": {"path": {"type": "string"}}, "required": ["path"]}`
   - Execute：
@@ -571,12 +571,12 @@ go test ./internal/config/ -v               # ✅ 配置测试通过
     3. `os.ReadFile` → 截断至 `maxOutputChars` → 返回内容
     4. 文件不存在 → `ToolResult{IsError: true, Content: "file not found: ..."}`
 
-- [ ] **T1.5.3** 实现 `internal/tools/file.go` — `write_file`
+- [x] **T1.5.3** 实现 `internal/tools/file.go` — `write_file`
   - 同一文件中再注册一个 tool
   - 参数 schema：`{"properties": {"path": {...}, "content": {"type": "string"}}, "required": ["path", "content"]}`
   - Execute：同样的路径沙箱检查 → `os.MkdirAll` 父目录 → `os.WriteFile` → 返回 "written N bytes"
 
-- [ ] **T1.5.4** 实现 `internal/tools/command.go` — `run_command`
+- [x] **T1.5.4** 实现 `internal/tools/command.go` — `run_command`
   - 构造函数接收 `allowedCommands []string` 和 `timeout time.Duration`
   - 参数 schema：`{"properties": {"command": {"type": "string"}, "args": {"type": "array", "items": {"type": "string"}}}, "required": ["command"]}`
   - Execute：
@@ -586,7 +586,7 @@ go test ./internal/config/ -v               # ✅ 配置测试通过
     4. 截断至 maxOutputChars
     5. 返回输出文本，若 exit code != 0 → `ToolResult{IsError: true, Content: "exit code 1: ..."}`
 
-- [ ] **T1.5.5** 创建 `internal/tools/tools_test.go`
+- [x] **T1.5.5** 创建 `internal/tools/tools_test.go`
   - 测试用例：
     1. `TestTimeTool_Default` — 无 timezone 参数
     2. `TestTimeTool_WithTimezone` — 指定 `Asia/Shanghai`
@@ -608,7 +608,7 @@ go test ./internal/config/ -v               # ✅ 配置测试通过
 
 **预估**：3 小时 | **前置**：T1.2, T1.4, T1.3 | **产出**：`internal/agent/agent.go`
 
-- [ ] **T1.6.1** 创建 `internal/agent/agent.go` — Agent 结构体
+- [x] **T1.6.1** 创建 `internal/agent/agent.go` — Agent 结构体
   ```go
   type Agent struct {
       provider      llm.Provider
@@ -621,7 +621,7 @@ go test ./internal/config/ -v               # ✅ 配置测试通过
   func NewAgent(provider llm.Provider, registry *tools.Registry, opts AgentOptions) *Agent
   ```
 
-- [ ] **T1.6.2** 实现 `Run` 方法（非流式 Agent 循环）
+- [x] **T1.6.2** 实现 `Run` 方法（非流式 Agent 循环）
   - 签名：`func (a *Agent) Run(ctx context.Context, session *Session, userMessage string) (string, error)`
   - 伪代码：
     1. 追加 `NewUserMessage(userMessage)` 到 session.Messages
@@ -638,11 +638,11 @@ go test ./internal/config/ -v               # ✅ 配置测试通过
          - `iteration++` → goto LOOP
        - 否则：追加 assistant message 到 session → 返回 `resp.Content`
 
-- [ ] **T1.6.3** 实现 `buildContext` 辅助方法
+- [x] **T1.6.3** 实现 `buildContext` 辅助方法
   - 构建消息列表：system prompt message + session.Messages
   - 调用 `llm.TruncateMessages(messages, a.contextWindow)` 截断
 
-- [ ] **T1.6.4** 定义 Agent 层的 Session 结构
+- [x] **T1.6.4** 定义 Agent 层的 Session 结构
   ```go
   type Session struct {
       ID         string
@@ -654,7 +654,7 @@ go test ./internal/config/ -v               # ✅ 配置测试通过
   }
   ```
 
-- [ ] **T1.6.5** 创建 `internal/agent/agent_test.go`
+- [x] **T1.6.5** 创建 `internal/agent/agent_test.go`
   - 定义 `mockProvider` 实现 `llm.Provider` 接口
   - 测试用例：
     1. `TestRun_SimpleTextResponse` — Provider 直接返回文本
@@ -671,7 +671,7 @@ go test ./internal/config/ -v               # ✅ 配置测试通过
 
 **预估**：1 小时 | **前置**：T1.6 | **产出**：`internal/agent/queue.go`
 
-- [ ] **T1.7.1** 创建 `internal/agent/queue.go`
+- [x] **T1.7.1** 创建 `internal/agent/queue.go`
   ```go
   type SessionQueue struct {
       locks sync.Map  // map[string]*sync.Mutex
@@ -687,7 +687,7 @@ go test ./internal/config/ -v               # ✅ 配置测试通过
   ```
   - 实现：`sync.Map` 存储 per-session 的 `*sync.Mutex`，`LoadOrStore` 保证并发安全
 
-- [ ] **T1.7.2** 编写测试
+- [x] **T1.7.2** 编写测试
   - `TestSessionQueue_ConcurrentDifferentSessions` — 不同 session 可并发
   - `TestSessionQueue_SameSessionSerial` — 同 session 串行（用 goroutine + time 验证）
   - **完成标准**：`go test ./internal/agent/ -v -run Queue` 全部 PASS
@@ -698,7 +698,7 @@ go test ./internal/config/ -v               # ✅ 配置测试通过
 
 **预估**：1.5 小时 | **前置**：T0.3 | **产出**：`internal/gateway/session.go`
 
-- [ ] **T1.8.1** 创建 `internal/gateway/session.go`
+- [x] **T1.8.1** 创建 `internal/gateway/session.go`
   - 定义接口：
     ```go
     type SessionStore interface {
@@ -723,7 +723,7 @@ go test ./internal/config/ -v               # ✅ 配置测试通过
     - 每 `cleanupInterval` 扫描一次
     - 删除 `UpdatedAt + ttl < now` 的 session
 
-- [ ] **T1.8.2** 创建 `internal/gateway/session_test.go`
+- [x] **T1.8.2** 创建 `internal/gateway/session_test.go`
   - 测试用例：
     1. `TestGetOrCreate_New` — 新 session 创建
     2. `TestGetOrCreate_Existing` — 已有 session 返回同一个
@@ -738,7 +738,7 @@ go test ./internal/config/ -v               # ✅ 配置测试通过
 
 **预估**：2 小时 | **前置**：T1.6, T1.7, T1.8 | **产出**：`internal/gateway/gateway.go`
 
-- [ ] **T1.9.1** 创建 `internal/gateway/gateway.go`
+- [x] **T1.9.1** 创建 `internal/gateway/gateway.go`
   - 添加 UUID 依赖：`go get github.com/google/uuid`
   - 实现：
     ```go
@@ -770,7 +770,7 @@ go test ./internal/config/ -v               # ✅ 配置测试通过
     func (g *Gateway) SessionCount() int
     ```
 
-- [ ] **T1.9.2** 定义 context key 类型
+- [x] **T1.9.2** 定义 context key 类型
   - 文件：`internal/gateway/context.go`
   ```go
   type contextKey string
@@ -783,7 +783,7 @@ go test ./internal/config/ -v               # ✅ 配置测试通过
   func RequestIDFromContext(ctx context.Context) string
   ```
 
-- [ ] **T1.9.3** 编写 Gateway 测试
+- [x] **T1.9.3** 编写 Gateway 测试
   - mock Agent 和 SessionStore
   - 测试 HandleMessage 的正常流程和错误传播
   - **完成标准**：`go test ./internal/gateway/ -v` 全部 PASS
@@ -794,12 +794,12 @@ go test ./internal/config/ -v               # ✅ 配置测试通过
 
 **预估**：3 小时 | **前置**：T1.9 | **产出**：完整 HTTP API
 
-- [ ] **T1.10.1** 添加 chi 依赖
+- [x] **T1.10.1** 添加 chi 依赖
   ```bash
   go get github.com/go-chi/chi/v5
   ```
 
-- [ ] **T1.10.2** 创建 `internal/channels/http.go` — 路由与中间件
+- [x] **T1.10.2** 创建 `internal/channels/http.go` — 路由与中间件
   ```go
   type HTTPChannel struct {
       gateway *gateway.Gateway
@@ -827,7 +827,7 @@ go test ./internal/config/ -v               # ✅ 配置测试通过
   func (h *HTTPChannel) Stop(ctx context.Context) error     // graceful shutdown
   ```
 
-- [ ] **T1.10.3** 实现 `handleChat` 处理器
+- [x] **T1.10.3** 实现 `handleChat` 处理器
   - 解析 `models.ChatRequest` from body
   - 若 `session_id` 为空 → 生成 UUID
   - 若 `stream == false`：调用 `gateway.HandleMessage` → 返回 JSON
@@ -838,24 +838,24 @@ go test ./internal/config/ -v               # ✅ 配置测试通过
     4. 循环读取 channel → 格式化为 SSE（`event: chunk\ndata: {...}\n\n`）→ write + flush
     5. 最终发送 `event: done\ndata: {...}\n\n`
 
-- [ ] **T1.10.4** 实现其他处理器
+- [x] **T1.10.4** 实现其他处理器
   - `handleGetSession`：从 URL 取 `{id}` → `gateway.GetSession` → 返回 JSON
   - `handleDeleteSession`：`gateway.DeleteSession` → 204
   - `handleHealth`：返回 `{"status":"ok","version":"0.1.0"}`
   - `handleStatus`：返回活跃 session 数、工具列表等
 
-- [ ] **T1.10.5** 实现中间件
+- [x] **T1.10.5** 实现中间件
   - `requestIDMiddleware`：生成 UUID → 写入 context 和 `X-Request-ID` response header
   - `loggingMiddleware`：slog 记录 method、path、status、latency
   - `recoveryMiddleware`：recover panic → 500 + slog.Error
 
-- [ ] **T1.10.6** 实现统一 JSON 响应辅助函数
+- [x] **T1.10.6** 实现统一 JSON 响应辅助函数
   ```go
   func writeJSON(w http.ResponseWriter, status int, data interface{})
   func writeError(w http.ResponseWriter, err *models.APIError)
   ```
 
-- [ ] **T1.10.7** 创建 `internal/channels/http_test.go`
+- [x] **T1.10.7** 创建 `internal/channels/http_test.go`
   - 使用 `httptest.NewRecorder` + chi 路由器
   - 测试用例：
     1. `TestHandleChat_Sync` — POST /v1/chat 非流式
@@ -872,7 +872,7 @@ go test ./internal/config/ -v               # ✅ 配置测试通过
 
 **预估**：2 小时 | **前置**：T1.1-T1.10 | **产出**：完整可运行的 MVP
 
-- [ ] **T1.11.1** 更新 `cmd/claw/main.go` — 完整启动流程
+- [x] **T1.11.1** 更新 `cmd/claw/main.go` — 完整启动流程
   ```go
   func main() {
       // 1. 解析 flag
@@ -892,7 +892,7 @@ go test ./internal/config/ -v               # ✅ 配置测试通过
   }
   ```
 
-- [ ] **T1.11.2** 创建冒烟测试脚本 `scripts/test_smoke.sh`
+- [x] **T1.11.2** 创建冒烟测试脚本 `scripts/test_smoke.sh`
   ```bash
   #!/bin/bash
   set -e
@@ -916,7 +916,7 @@ go test ./internal/config/ -v               # ✅ 配置测试通过
   curl -s "$BASE/status" | jq .
   ```
 
-- [ ] **T1.11.3** 手动端到端验证
+- [x] **T1.11.3** 手动端到端验证
   - 启动服务：`make run`
   - 执行 `scripts/test_smoke.sh`
   - 验证：
@@ -926,7 +926,7 @@ go test ./internal/config/ -v               # ✅ 配置测试通过
     - [x] 流式输出正常
     - [x] Ctrl+C 优雅关闭
 
-- [ ] **T1.11.4** 编写集成测试 `internal/integration_test.go`（可选，build tag `integration`）
+- [x] **T1.11.4** 编写集成测试 `internal/integration_test.go`（可选，build tag `integration`）
   - 使用 mock Provider 启动完整 HTTP server
   - 发送请求验证端到端流程
   - **完成标准**：`go test -tags integration ./... -v` 通过
@@ -958,7 +958,7 @@ curl -s -X POST localhost:8080/v1/chat \
 
 **预估**：2 小时 | **前置**：Phase 1 | **产出**：`internal/llm/manager.go`
 
-- [ ] **T2.1.1** 创建 `internal/llm/manager.go`
+- [x] **T2.1.1** 创建 `internal/llm/manager.go`
   ```go
   type ProviderManager struct {
       providers     map[string]Provider
@@ -972,10 +972,10 @@ curl -s -X POST localhost:8080/v1/chat \
   - 判定可重试：网络错误、5xx、超时。4xx 不切换。
   - 429 读取 Retry-After → `time.Sleep` → 重试同一 Provider
 
-- [ ] **T2.1.2** 让 `ProviderManager` 实现 `Provider` 接口
+- [x] **T2.1.2** 让 `ProviderManager` 实现 `Provider` 接口
   - Agent 无需修改，只需在 main 中传入 ProviderManager 替代单个 Provider
 
-- [ ] **T2.1.3** 编写测试
+- [x] **T2.1.3** 编写测试
   - mock 两个 Provider，主 Provider 返回错误，验证自动切到备用
   - **完成标准**：测试通过
 
@@ -985,14 +985,14 @@ curl -s -X POST localhost:8080/v1/chat \
 
 **预估**：3 小时 | **前置**：T1.1
 
-- [ ] **T2.2.1** 创建 `internal/llm/anthropic.go`
+- [x] **T2.2.1** 创建 `internal/llm/anthropic.go`
   - Anthropic Messages API 与 OpenAI 的差异：
     - endpoint: `/v1/messages`
     - header: `x-api-key` 和 `anthropic-version`
     - system message 单独字段（不在 messages 数组中）
     - tool_use / tool_result 的格式不同
   - 实现 Chat 和 ChatStream
-- [ ] **T2.2.2** 编写测试
+- [x] **T2.2.2** 编写测试
 
 ---
 
@@ -1000,7 +1000,7 @@ curl -s -X POST localhost:8080/v1/chat \
 
 **预估**：1 小时 | **前置**：Phase 1
 
-- [ ] **T2.3.1** 创建 `internal/channels/channel.go`
+- [x] **T2.3.1** 创建 `internal/channels/channel.go`
   ```go
   type Channel interface {
       Name() string
@@ -1008,8 +1008,8 @@ curl -s -X POST localhost:8080/v1/chat \
       Stop(ctx context.Context) error
   }
   ```
-- [ ] **T2.3.2** 重构 `HTTPChannel` 实现该接口
-- [ ] **T2.3.3** 更新 `main.go`：统一 Channel 管理（遍历启动/关闭）
+- [x] **T2.3.2** 重构 `HTTPChannel` 实现该接口
+- [x] **T2.3.3** 更新 `main.go`：统一 Channel 管理（遍历启动/关闭）
 
 ---
 
@@ -1017,27 +1017,27 @@ curl -s -X POST localhost:8080/v1/chat \
 
 **预估**：3 小时 | **前置**：T2.3
 
-- [ ] **T2.4.1** 添加依赖：`go get github.com/coder/websocket`
-- [ ] **T2.4.2** 创建 `internal/channels/websocket.go`
+- [x] **T2.4.1** 添加依赖：`go get github.com/coder/websocket`
+- [x] **T2.4.2** 创建 `internal/channels/websocket.go`
   - `GET /v1/ws?session_id=xxx` → 升级连接
   - 读循环：解析 JSON 消息 → 调用 Gateway
   - 写循环：从 stream channel 读取 → 发送 JSON
   - 心跳：定时 ping，超时关闭
-- [ ] **T2.4.3** 编写测试
+- [x] **T2.4.3** 编写测试
 
 ---
 
-### T2.5 Telegram Channel
+### T2.5 飞书 Channel
 
 **预估**：3 小时 | **前置**：T2.3
 
-- [ ] **T2.5.1** 添加依赖：`go get gopkg.in/telebot.v3`
-- [ ] **T2.5.2** 创建 `internal/channels/telegram.go`
-  - 长轮询模式接收消息
+- [x] **T2.5.1** 添加依赖：`go get github.com/larksuite/oapi-sdk-go/v3`
+- [x] **T2.5.2** 创建 `internal/channels/feishu.go`
+  - 通过飞书开放平台事件订阅接收消息
   - chat_id 作为 session_id
-  - allowed_users 白名单过滤
-  - 长消息分段（每段 ≤ 4096 字符）
-- [ ] **T2.5.3** 编写测试
+  - 使用飞书 SDK 发送回复
+  - 长消息分段发送
+- [x] **T2.5.3** 编写测试
 
 ---
 
@@ -1090,7 +1090,7 @@ curl -s -X POST localhost:8080/v1/chat \
 ### Phase 2 验收检查
 
 ```bash
-# WebSocket 或 Telegram 通道可用
+# WebSocket 或飞书通道可用
 # Provider 故障转移正常（模拟主 Provider 故障）
 # 技能加载后 system prompt 包含 instructions 内容
 ```
@@ -1111,11 +1111,11 @@ curl -s -X POST localhost:8080/v1/chat \
 
 ---
 
-### T3.2 Telegram 签名校验
+### T3.2 飞书签名校验
 
 **预估**：30 分钟 | **前置**：T2.5
 
-- [ ] **T3.2.1** Webhook 模式下校验签名
+- [ ] **T3.2.1** 校验飞书事件订阅的请求签名（Verification Token / Encrypt Key）
 
 ---
 
@@ -1232,32 +1232,32 @@ curl localhost:8080/ready                        # ✅ 200 或 503
 
 | 任务 ID | 描述 | 预估 | 状态 |
 |---------|------|------|------|
-| T0.1 | 初始化项目结构 | 30m | ⬜ |
-| T0.2 | 配置模块 | 2h | ⬜ |
-| T0.3 | 统一数据结构 | 1h | ⬜ |
-| T0.4 | 入口串联与 README | 1h | ⬜ |
-| T1.1 | Provider 接口定义 | 30m | ⬜ |
-| T1.2 | OpenAI Provider 实现 | 4h | ⬜ |
-| T1.3 | Token 计数 | 1h | ⬜ |
-| T1.4 | 工具接口与注册表 | 1h | ⬜ |
-| T1.5 | 基础工具实现 | 3h | ⬜ |
-| T1.6 | Agent 循环 | 3h | ⬜ |
-| T1.7 | Session 排队 | 1h | ⬜ |
-| T1.8 | Session 存储 | 1.5h | ⬜ |
-| T1.9 | Gateway 核心 | 2h | ⬜ |
-| T1.10 | HTTP Channel | 3h | ⬜ |
-| T1.11 | Main 串联与集成 | 2h | ⬜ |
-| T2.1 | 多 Provider 管理 | 2h | ⬜ |
-| T2.2 | Anthropic Provider | 3h | ⬜ |
-| T2.3 | Channel 接口抽象 | 1h | ⬜ |
-| T2.4 | WebSocket Channel | 3h | ⬜ |
-| T2.5 | Telegram Channel | 3h | ⬜ |
+| T0.1 | 初始化项目结构 | 30m | ✅ |
+| T0.2 | 配置模块 | 2h | ✅ |
+| T0.3 | 统一数据结构 | 1h | ✅ |
+| T0.4 | 入口串联与 README | 1h | ✅ |
+| T1.1 | Provider 接口定义 | 30m | ✅ |
+| T1.2 | OpenAI Provider 实现 | 4h | ✅ |
+| T1.3 | Token 计数 | 1h | ✅ |
+| T1.4 | 工具接口与注册表 | 1h | ✅ |
+| T1.5 | 基础工具实现 | 3h | ✅ |
+| T1.6 | Agent 循环 | 3h | ✅ |
+| T1.7 | Session 排队 | 1h | ✅ |
+| T1.8 | Session 存储 | 1.5h | ✅ |
+| T1.9 | Gateway 核心 | 2h | ✅ |
+| T1.10 | HTTP Channel | 3h | ✅ |
+| T1.11 | Main 串联与集成 | 2h | ✅ |
+| T2.1 | 多 Provider 管理 | 2h | ✅ |
+| T2.2 | Anthropic Provider | 3h | ✅ |
+| T2.3 | Channel 接口抽象 | 1h | ✅ |
+| T2.4 | WebSocket Channel | 3h | ✅ |
+| T2.5 | 飞书 Channel | 3h | ✅ |
 | T2.6 | Web Search 工具 | 2h | ⬜ |
 | T2.7 | Memory 工具 | 1.5h | ⬜ |
 | T2.8 | 工具权限 Profile | 1h | ⬜ |
 | T2.9 | 技能系统 | 2h | ⬜ |
 | T3.1 | API Key 鉴权 | 1h | ⬜ |
-| T3.2 | Telegram 签名校验 | 30m | ⬜ |
+| T3.2 | 飞书签名校验 | 30m | ⬜ |
 | T3.3 | 速率限制 | 1.5h | ⬜ |
 | T3.4 | 审计日志 | 1.5h | ⬜ |
 | T3.5 | SQLite 持久化 | 3h | ⬜ |
