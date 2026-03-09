@@ -13,7 +13,7 @@
 
 - [x] **T0.1.1** 初始化 Go module
   ```bash
-  go mod init github.com/mingminliu/claw
+  go mod init github.com/YumingHuang/claw
   ```
 
 - [x] **T0.1.2** 创建目录结构

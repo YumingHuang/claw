@@ -4,7 +4,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/mingminliu/claw/internal/models"
+	"github.com/YumingHuang/claw/internal/models"
 )
 
 // Session holds the conversation state for a single user session.

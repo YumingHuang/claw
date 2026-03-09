@@ -3,7 +3,7 @@ package llm
 import (
 	"unicode"
 
-	"github.com/mingminliu/claw/internal/models"
+	"github.com/YumingHuang/claw/internal/models"
 )
 
 const perMessageOverhead = 4 // role, separators, etc.

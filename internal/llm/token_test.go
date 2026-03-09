@@ -3,7 +3,7 @@ package llm
 import (
 	"testing"
 
-	"github.com/mingminliu/claw/internal/models"
+	"github.com/YumingHuang/claw/internal/models"
 )
 
 func TestEstimateTokens_English(t *testing.T) {

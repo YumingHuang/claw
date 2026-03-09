@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/mingminliu/claw/internal/llm"
-	"github.com/mingminliu/claw/internal/models"
-	"github.com/mingminliu/claw/internal/tools"
+	"github.com/YumingHuang/claw/internal/llm"
+	"github.com/YumingHuang/claw/internal/models"
+	"github.com/YumingHuang/claw/internal/tools"
 )
 
 // AgentOptions configures the Agent.

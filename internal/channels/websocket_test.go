@@ -8,10 +8,10 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
-	"github.com/mingminliu/claw/internal/agent"
-	"github.com/mingminliu/claw/internal/gateway"
-	"github.com/mingminliu/claw/internal/llm"
-	"github.com/mingminliu/claw/internal/tools"
+	"github.com/YumingHuang/claw/internal/agent"
+	"github.com/YumingHuang/claw/internal/gateway"
+	"github.com/YumingHuang/claw/internal/llm"
+	"github.com/YumingHuang/claw/internal/tools"
 )
 
 func newTestWebSocketServer(t *testing.T) (*httptest.Server, *WebSocketChannel) {

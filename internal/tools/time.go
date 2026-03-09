@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/mingminliu/claw/internal/models"
+	"github.com/YumingHuang/claw/internal/models"
 )
 
 type TimeTool struct{}

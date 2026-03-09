@@ -4,7 +4,7 @@ import (
 	"log/slog"
 	"testing"
 
-	"github.com/mingminliu/claw/internal/config"
+	"github.com/YumingHuang/claw/internal/config"
 )
 
 func TestSetupLogger(t *testing.T) {

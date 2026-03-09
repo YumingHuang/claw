@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/mingminliu/claw/internal/agent"
-	"github.com/mingminliu/claw/internal/models"
+	"github.com/YumingHuang/claw/internal/agent"
+	"github.com/YumingHuang/claw/internal/models"
 )
 
 // Gateway coordinates sessions, queuing, and the agent.

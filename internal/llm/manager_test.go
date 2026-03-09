@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mingminliu/claw/internal/config"
-	"github.com/mingminliu/claw/internal/models"
+	"github.com/YumingHuang/claw/internal/config"
+	"github.com/YumingHuang/claw/internal/models"
 )
 
 // --- mock provider for manager tests ---

@@ -11,7 +11,7 @@
 - **语言**：Go 1.22+
 - **架构**：多入口、单内核分层架构（入口层 → 控制面 → 执行面 → 能力层 → 数据层）
 - **核心文档**：`spec.md`（产品与技术规格）、`plan.md`（实施计划）、`task.md`（可执行任务清单）
-- **模块入口**：`github.com/mingminliu/claw`
+- **模块入口**：`github.com/YumingHuang/claw`
 
 ---
 

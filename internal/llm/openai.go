@@ -10,8 +10,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/mingminliu/claw/internal/config"
-	"github.com/mingminliu/claw/internal/models"
+	"github.com/YumingHuang/claw/internal/config"
+	"github.com/YumingHuang/claw/internal/models"
 )
 
 // OpenAIProvider implements Provider for OpenAI-compatible APIs.

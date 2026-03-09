@@ -10,8 +10,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
-	"github.com/mingminliu/claw/internal/gateway"
-	"github.com/mingminliu/claw/internal/models"
+	"github.com/YumingHuang/claw/internal/gateway"
+	"github.com/YumingHuang/claw/internal/models"
 )
 
 const version = "0.1.0"

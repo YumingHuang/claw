@@ -11,12 +11,12 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/mingminliu/claw/internal/agent"
-	"github.com/mingminliu/claw/internal/channels"
-	"github.com/mingminliu/claw/internal/config"
-	"github.com/mingminliu/claw/internal/gateway"
-	"github.com/mingminliu/claw/internal/llm"
-	"github.com/mingminliu/claw/internal/tools"
+	"github.com/YumingHuang/claw/internal/agent"
+	"github.com/YumingHuang/claw/internal/channels"
+	"github.com/YumingHuang/claw/internal/config"
+	"github.com/YumingHuang/claw/internal/gateway"
+	"github.com/YumingHuang/claw/internal/llm"
+	"github.com/YumingHuang/claw/internal/tools"
 )
 
 const version = "0.1.0"

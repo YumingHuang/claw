@@ -12,8 +12,8 @@ import (
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
 	"github.com/google/uuid"
-	"github.com/mingminliu/claw/internal/gateway"
-	"github.com/mingminliu/claw/internal/models"
+	"github.com/YumingHuang/claw/internal/gateway"
+	"github.com/YumingHuang/claw/internal/models"
 )
 
 // WebSocket message types exchanged between client and server.

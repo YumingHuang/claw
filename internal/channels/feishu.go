@@ -12,8 +12,8 @@ import (
 
 	lark "github.com/larksuite/oapi-sdk-go/v3"
 	larkim "github.com/larksuite/oapi-sdk-go/v3/service/im/v1"
-	"github.com/mingminliu/claw/internal/config"
-	"github.com/mingminliu/claw/internal/gateway"
+	"github.com/YumingHuang/claw/internal/config"
+	"github.com/YumingHuang/claw/internal/gateway"
 )
 
 const feishuMaxMsgLen = 4000

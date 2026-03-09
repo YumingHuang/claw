@@ -6,7 +6,13 @@
       "Bash(go test:*)",
       "Bash(OPENAI_API_KEY=sk-test-key BACKUP_API_KEY=sk-backup-key TELEGRAM_BOT_TOKEN=test-token CLAW_API_KEY=claw-api-key go run:*)",
       "Bash(OPENAI_API_KEY=sk-test-key BACKUP_API_KEY=sk-backup-key TELEGRAM_BOT_TOKEN=test-token CLAW_API_KEY=claw-api-key go test:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(find:*)",
+      "Bash(grep:*)",
+      "Bash(rm:*)",
+      "Bash(go mod tidy:*)",
+      "Bash(go build:*)"
     ]
   }
 }

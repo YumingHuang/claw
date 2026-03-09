@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mingminliu/claw/internal/config"
-	"github.com/mingminliu/claw/internal/models"
+	"github.com/YumingHuang/claw/internal/config"
+	"github.com/YumingHuang/claw/internal/models"
 )
 
 func newTestAnthropicProvider(t *testing.T, serverURL string) *AnthropicProvider {

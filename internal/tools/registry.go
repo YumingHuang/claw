@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/mingminliu/claw/internal/llm"
-	"github.com/mingminliu/claw/internal/models"
+	"github.com/YumingHuang/claw/internal/llm"
+	"github.com/YumingHuang/claw/internal/models"
 )
 
 // Tool represents an atomic capability the agent can invoke.

@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 
-	"github.com/mingminliu/claw/internal/models"
+	"github.com/YumingHuang/claw/internal/models"
 )
 
 // Provider abstracts an LLM service that can generate chat completions.
