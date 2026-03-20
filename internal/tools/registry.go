@@ -9,7 +9,7 @@ import (
 	"github.com/YumingHuang/claw/internal/models"
 )
 
-// Tool represents an atomic capability the agent can invoke.
+// Tool represents an atomic capability the agents can invoke.
 type Tool interface {
 	Name() string
 	Description() string
@@ -19,13 +19,18 @@ type Tool interface {
 
 // Registry holds registered tools and provides lookup and schema generation.
 type Registry struct {
-	tools map[string]Tool
-	order []string // preserves insertion order for List()
+	tools          map[string]Tool
+	order          []string // preserves insertion order for List()
+	profiles       map[string][]string
+	defaultProfile string
 }
 
 // NewRegistry creates an empty tool registry.
 func NewRegistry() *Registry {
-	return &Registry{tools: make(map[string]Tool)}
+	return &Registry{
+		tools:    make(map[string]Tool),
+		profiles: make(map[string][]string),
+	}
 }
 
 // Register adds a tool. Returns an error if a tool with the same name exists.
@@ -65,8 +70,65 @@ func (r *Registry) List() []Tool {
 
 // Schemas returns OpenAI function-calling tool schemas for all registered tools.
 func (r *Registry) Schemas() []llm.ToolSchema {
+	return r.schemasForToolNames(r.order)
+}
+
+// SetProfiles configures named tool profiles and the default profile.
+func (r *Registry) SetProfiles(profiles map[string][]string, defaultProfile string) error {
+	if len(profiles) == 0 {
+		r.profiles = make(map[string][]string)
+		r.defaultProfile = ""
+		return nil
+	}
+
+	normalized := make(map[string][]string, len(profiles))
+	for profile, tools := range profiles {
+		names := make([]string, 0, len(tools))
+		seen := make(map[string]struct{}, len(tools))
+		for _, name := range tools {
+			if _, ok := r.tools[name]; !ok {
+				return fmt.Errorf("unknown tool %q in profile %q", name, profile)
+			}
+			if _, ok := seen[name]; ok {
+				continue
+			}
+			seen[name] = struct{}{}
+			names = append(names, name)
+		}
+		normalized[profile] = names
+	}
+	if defaultProfile != "" {
+		if _, ok := normalized[defaultProfile]; !ok {
+			return fmt.Errorf("default profile %q not found", defaultProfile)
+		}
+	}
+
+	r.profiles = normalized
+	r.defaultProfile = defaultProfile
+	return nil
+}
+
+// FilterByProfile returns the tools enabled for the requested profile.
+func (r *Registry) FilterByProfile(profile string) []llm.ToolSchema {
+	if len(r.profiles) == 0 {
+		return r.Schemas()
+	}
+	if profile == "" {
+		profile = r.defaultProfile
+	}
+	if profile == "" {
+		return r.Schemas()
+	}
+	names, ok := r.profiles[profile]
+	if !ok {
+		return nil
+	}
+	return r.schemasForToolNames(names)
+}
+
+func (r *Registry) schemasForToolNames(names []string) []llm.ToolSchema {
 	out := make([]llm.ToolSchema, 0, len(r.order))
-	for _, name := range r.order {
+	for _, name := range names {
 		t := r.tools[name]
 		out = append(out, llm.ToolSchema{
 			Type: "function",

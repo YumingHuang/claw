@@ -19,7 +19,7 @@
 - [x] **T0.1.2** 创建目录结构
   ```bash
   mkdir -p cmd/claw
-  mkdir -p internal/{config,gateway,agent,llm,tools,channels,models}
+  mkdir -p internal/{config,gateway,agents,llm,tools,channels,models}
   mkdir -p configs scripts
   ```
 
@@ -756,13 +756,13 @@ go test ./internal/config/ -v               # ✅ 配置测试通过
         // 2. 注入 request_id 到 ctx（用 context.WithValue）
         // 3. session = g.sessions.GetOrCreate(sessionID, channel)
         // 4. g.queue.Acquire(sessionID) / defer Release
-        // 5. result, err = g.agent.Run(ctx, session, message)
+        // 5. result, err = g.agents.Run(ctx, session, message)
         // 6. 构造 ChatResponse 返回
         // 7. slog 记录请求摘要（request_id, session_id, latency, token count）
     }
 
     func (g *Gateway) HandleMessageStream(ctx context.Context, sessionID, channel, message string) (<-chan models.StreamChunk, error) {
-        // 类似，但调用 agent.RunStream
+        // 类似，但调用 agents.RunStream
     }
 
     func (g *Gateway) GetSession(id string) (*agent.Session, bool)
@@ -1045,11 +1045,11 @@ curl -s -X POST localhost:8080/v1/chat \
 
 **预估**：2 小时 | **前置**：T1.4
 
-- [ ] **T2.6.1** 创建 `internal/tools/search.go`
+- [x] **T2.6.1** 创建 `internal/tools/search.go`
   - 对接 Tavily API（或 SearXNG）
   - 参数：`query`, `num_results`
   - 返回：标题 + 摘要 + URL
-- [ ] **T2.6.2** 编写测试
+- [x] **T2.6.2** 编写测试
 
 ---
 
@@ -1057,11 +1057,11 @@ curl -s -X POST localhost:8080/v1/chat \
 
 **预估**：1.5 小时 | **前置**：T1.4
 
-- [ ] **T2.7.1** 创建 `internal/tools/memory.go`
+- [x] **T2.7.1** 创建 `internal/tools/memory.go`
   - `memory_get`、`memory_set`、`memory_list`
   - 按 session_id 做 namespace 隔离
   - 内存 map 存储
-- [ ] **T2.7.2** 编写测试
+- [x] **T2.7.2** 编写测试
 
 ---
 
@@ -1069,9 +1069,9 @@ curl -s -X POST localhost:8080/v1/chat \
 
 **预估**：1 小时 | **前置**：T1.4
 
-- [ ] **T2.8.1** 扩展 `config.ToolsConfig`，增加 profiles 和 default_profile
-- [ ] **T2.8.2** Registry 增加 `FilterByProfile(profile string) []ToolSchema` 方法
-- [ ] **T2.8.3** Gateway 按 profile 过滤可用工具
+- [x] **T2.8.1** 扩展 `config.ToolsConfig`，增加 profiles 和 default_profile
+- [x] **T2.8.2** Registry 增加 `FilterByProfile(profile string) []ToolSchema` 方法
+- [x] **T2.8.3** Gateway 按 profile 过滤可用工具
 
 ---
 
@@ -1079,11 +1079,11 @@ curl -s -X POST localhost:8080/v1/chat \
 
 **预估**：2 小时 | **前置**：T1.4
 
-- [ ] **T2.9.1** 创建 `internal/skills/loader.go`
+- [x] **T2.9.1** 创建 `internal/skills/loader.go`
   - 扫描技能目录 → 解析 skill.yaml → 读取 instructions.md
   - 验证引用的 tools 已注册
   - 返回拼接后的 system prompt 补充内容
-- [ ] **T2.9.2** 编写测试（用 testdata 目录模拟技能）
+- [x] **T2.9.2** 编写测试（用 testdata 目录模拟技能）
 
 ---
 

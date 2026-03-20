@@ -72,6 +72,16 @@ tools:
   max_output_chars: 10000               # 工具输出最大字符数
   timeout: 30s                           # 单次工具调用超时
   max_iterations: 10                     # Agent 循环最大轮数
+  default_profile: "default"             # 默认工具权限配置
+  profiles:
+    default:
+      - "get_current_time"
+      - "memory_get"
+      - "memory_set"
+      - "memory_list"
+      - "read_file"
+      - "write_file"
+      - "run_command"
 
 channels:
   # HTTP 通道配置

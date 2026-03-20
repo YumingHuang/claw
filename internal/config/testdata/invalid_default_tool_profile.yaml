@@ -1,0 +1,14 @@
+providers:
+  default: "openai"
+  list:
+    - name: "openai"
+      type: "openai_compatible"
+      base_url: "https://api.openai.com/v1"
+      api_key: "test-key"
+      model: "gpt-4o-mini"
+
+tools:
+  default_profile: "safe"
+  profiles:
+    restricted:
+      - "get_current_time"

@@ -75,11 +75,13 @@ type RetryConfig struct {
 
 // ToolsConfig holds tools execution configuration.
 type ToolsConfig struct {
-	Workdir         string        `yaml:"workdir"`
-	AllowedCommands []string      `yaml:"allowed_commands"`
-	MaxOutputChars  int           `yaml:"max_output_chars"`
-	Timeout         time.Duration `yaml:"timeout"`
-	MaxIterations   int           `yaml:"max_iterations"`
+	Workdir         string              `yaml:"workdir"`
+	AllowedCommands []string            `yaml:"allowed_commands"`
+	MaxOutputChars  int                 `yaml:"max_output_chars"`
+	Timeout         time.Duration       `yaml:"timeout"`
+	MaxIterations   int                 `yaml:"max_iterations"`
+	Profiles        map[string][]string `yaml:"profiles"`
+	DefaultProfile  string              `yaml:"default_profile"`
 }
 
 // ChannelsConfig holds communication channel configuration.
@@ -102,8 +104,8 @@ type WebSocketChannelConfig struct {
 
 // FeishuChannelConfig holds Feishu channel configuration.
 type FeishuChannelConfig struct {
-	Enabled  bool   `yaml:"enabled"`
-	AppID    string `yaml:"app_id"`
+	Enabled   bool   `yaml:"enabled"`
+	AppID     string `yaml:"app_id"`
 	AppSecret string `yaml:"app_secret"`
 }
 
@@ -263,6 +265,15 @@ func (c *Config) validate() error {
 	if c.Tools.Workdir != "" {
 		if !filepath.IsAbs(c.Tools.Workdir) {
 			return fmt.Errorf("tools.workdir must be an absolute path")
+		}
+	}
+
+	if c.Tools.DefaultProfile != "" {
+		if len(c.Tools.Profiles) == 0 {
+			return fmt.Errorf("tools.default_profile requires tools.profiles to be configured")
+		}
+		if _, ok := c.Tools.Profiles[c.Tools.DefaultProfile]; !ok {
+			return fmt.Errorf("tools.default_profile '%s' not found in tools.profiles", c.Tools.DefaultProfile)
 		}
 	}
 

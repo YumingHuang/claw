@@ -60,6 +60,19 @@ func main() {
 		slog.Error("register tool", "error", err)
 		os.Exit(1)
 	}
+	memoryStore := tools.NewMemoryStore()
+	if err := registry.Register(tools.NewMemoryGetTool(memoryStore)); err != nil {
+		slog.Error("register tool", "error", err)
+		os.Exit(1)
+	}
+	if err := registry.Register(tools.NewMemorySetTool(memoryStore)); err != nil {
+		slog.Error("register tool", "error", err)
+		os.Exit(1)
+	}
+	if err := registry.Register(tools.NewMemoryListTool(memoryStore)); err != nil {
+		slog.Error("register tool", "error", err)
+		os.Exit(1)
+	}
 	if cfg.Tools.Workdir != "" {
 		if err := registry.Register(tools.NewReadFileTool(cfg.Tools.Workdir, cfg.Tools.MaxOutputChars)); err != nil {
 			slog.Error("register tool", "error", err)
@@ -76,6 +89,10 @@ func main() {
 			os.Exit(1)
 		}
 	}
+	if err := registry.SetProfiles(cfg.Tools.Profiles, cfg.Tools.DefaultProfile); err != nil {
+		slog.Error("configure tool profiles", "error", err)
+		os.Exit(1)
+	}
 
 	// --- Agent ---
 	a := agent.NewAgent(provider, registry, agent.AgentOptions{
@@ -91,6 +108,7 @@ func main() {
 	sessionStore := gateway.NewMemorySessionStore(ctx, cfg.Session.TTL, cfg.Session.MaxHistory, cfg.Session.CleanupInterval)
 	queue := agent.NewSessionQueue()
 	gw := gateway.NewGateway(a, sessionStore, queue)
+	gw.SetToolProfile(cfg.Tools.DefaultProfile)
 
 	// --- Channels ---
 	addr := net.JoinHostPort(cfg.Server.Host, fmt.Sprintf("%d", cfg.Server.Port))

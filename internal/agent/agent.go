@@ -6,6 +6,7 @@ import (
 
 	"github.com/YumingHuang/claw/internal/llm"
 	"github.com/YumingHuang/claw/internal/models"
+	"github.com/YumingHuang/claw/internal/requestctx"
 	"github.com/YumingHuang/claw/internal/tools"
 )
 
@@ -36,7 +37,7 @@ func NewAgent(provider llm.Provider, registry *tools.Registry, opts AgentOptions
 	}
 }
 
-// Run executes the agent loop: send user message, call LLM, execute tools if
+// Run executes the agents loop: send user message, call LLM, execute tools if
 // requested, and repeat until the LLM returns a text response or the iteration
 // limit is reached.
 func (a *Agent) Run(ctx context.Context, session *Session, userMessage string) (string, error) {
@@ -58,7 +59,7 @@ func (a *Agent) Run(ctx context.Context, session *Session, userMessage string) (
 		msgs := a.buildContext(session)
 		req := &llm.ChatRequest{
 			Messages: msgs,
-			Tools:    a.toolRegistry.Schemas(),
+			Tools:    a.toolSchemasForContext(ctx),
 		}
 
 		resp, err := a.provider.Chat(ctx, req)
@@ -84,7 +85,7 @@ func (a *Agent) Run(ctx context.Context, session *Session, userMessage string) (
 	}
 }
 
-// RunStream executes the agent loop with streaming LLM responses.
+// RunStream executes the agents loop with streaming LLM responses.
 func (a *Agent) RunStream(ctx context.Context, session *Session, userMessage string) (<-chan models.StreamChunk, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, fmt.Errorf("context cancelled: %w", err)
@@ -95,7 +96,7 @@ func (a *Agent) RunStream(ctx context.Context, session *Session, userMessage str
 	msgs := a.buildContext(session)
 	req := &llm.ChatRequest{
 		Messages: msgs,
-		Tools:    a.toolRegistry.Schemas(),
+		Tools:    a.toolSchemasForContext(ctx),
 	}
 
 	llmCh, err := a.provider.ChatStream(ctx, req)
@@ -127,7 +128,7 @@ func (a *Agent) buildContext(session *Session) []models.Message {
 	if a.systemPrompt != "" {
 		msgs = append(msgs, models.NewSystemMessage(a.systemPrompt))
 	}
-	msgs = append(msgs, session.Messages...)
+	msgs = append(msgs, session.Messages()...)
 
 	if a.contextWindow > 0 {
 		msgs = llm.TruncateMessages(msgs, a.contextWindow)
@@ -143,4 +144,8 @@ func (a *Agent) ToolNames() []string {
 		names[i] = t.Name()
 	}
 	return names
+}
+
+func (a *Agent) toolSchemasForContext(ctx context.Context) []llm.ToolSchema {
+	return a.toolRegistry.FilterByProfile(requestctx.ToolProfileFromContext(ctx))
 }

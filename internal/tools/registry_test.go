@@ -105,3 +105,35 @@ func TestRegistry_Schemas(t *testing.T) {
 		t.Errorf("Function.Name = %q, want %q", schemas[0].Function.Name, "schema_test")
 	}
 }
+
+func TestRegistry_FilterByProfile(t *testing.T) {
+	r := NewRegistry()
+	_ = r.Register(&fakeTool{name: "tool_a"})
+	_ = r.Register(&fakeTool{name: "tool_b"})
+
+	if err := r.SetProfiles(map[string][]string{
+		"safe": {"tool_a"},
+	}, "safe"); err != nil {
+		t.Fatalf("SetProfiles: %v", err)
+	}
+
+	schemas := r.FilterByProfile("safe")
+	if len(schemas) != 1 {
+		t.Fatalf("len = %d, want 1", len(schemas))
+	}
+	if schemas[0].Function.Name != "tool_a" {
+		t.Fatalf("got %q", schemas[0].Function.Name)
+	}
+}
+
+func TestRegistry_SetProfilesRejectsUnknownTool(t *testing.T) {
+	r := NewRegistry()
+	_ = r.Register(&fakeTool{name: "tool_a"})
+
+	err := r.SetProfiles(map[string][]string{
+		"safe": {"tool_b"},
+	}, "safe")
+	if err == nil {
+		t.Fatal("expected error")
+	}
+}

@@ -201,6 +201,15 @@ func TestLoad_RelativeWorkdir(t *testing.T) {
 	}
 }
 
+func TestLoad_InvalidDefaultToolProfile(t *testing.T) {
+	configPath := "testdata/invalid_default_tool_profile.yaml"
+	_, err := Load(configPath)
+
+	if err == nil {
+		t.Error("expected error for invalid default tool profile, got nil")
+	}
+}
+
 // TestExpandEnv tests the expandEnv function.
 func TestExpandEnv(t *testing.T) {
 	os.Setenv("TEST_VAR", "test-value")

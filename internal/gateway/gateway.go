@@ -6,16 +6,18 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/YumingHuang/claw/internal/agent"
 	"github.com/YumingHuang/claw/internal/models"
+	"github.com/YumingHuang/claw/internal/requestctx"
+	"github.com/google/uuid"
 )
 
-// Gateway coordinates sessions, queuing, and the agent.
+// Gateway coordinates sessions, queuing, and the agents.
 type Gateway struct {
-	agent    *agent.Agent
-	sessions SessionStore
-	queue    *agent.SessionQueue
+	agent       *agent.Agent
+	sessions    SessionStore
+	queue       *agent.SessionQueue
+	toolProfile string
 }
 
 // NewGateway creates a Gateway.
@@ -23,11 +25,19 @@ func NewGateway(a *agent.Agent, sessions SessionStore, queue *agent.SessionQueue
 	return &Gateway{agent: a, sessions: sessions, queue: queue}
 }
 
+// SetToolProfile configures the default tool profile applied to incoming requests.
+func (g *Gateway) SetToolProfile(profile string) {
+	g.toolProfile = profile
+}
+
 // HandleMessage processes a non-streaming chat request.
 func (g *Gateway) HandleMessage(ctx context.Context, sessionID, channel, message string) (*models.ChatResponse, error) {
 	requestID := uuid.New().String()
 	ctx = context.WithValue(ctx, ContextKeyRequestID, requestID)
 	ctx = context.WithValue(ctx, ContextKeySessionID, sessionID)
+	if g.toolProfile != "" {
+		ctx = context.WithValue(ctx, requestctx.ToolProfileKey, g.toolProfile)
+	}
 
 	start := time.Now()
 	session := g.sessions.GetOrCreate(sessionID, channel)
@@ -41,7 +51,7 @@ func (g *Gateway) HandleMessage(ctx context.Context, sessionID, channel, message
 	if err != nil {
 		slog.Error("handle message failed",
 			"request_id", requestID, "session_id", sessionID, "latency", latency, "error", err)
-		return nil, fmt.Errorf("agent run: %w", err)
+		return nil, fmt.Errorf("agents run: %w", err)
 	}
 
 	resp := &models.ChatResponse{
@@ -60,6 +70,10 @@ func (g *Gateway) HandleMessage(ctx context.Context, sessionID, channel, message
 func (g *Gateway) HandleMessageStream(ctx context.Context, sessionID, channel, message string) (<-chan models.StreamChunk, error) {
 	requestID := uuid.New().String()
 	ctx = context.WithValue(ctx, ContextKeyRequestID, requestID)
+	ctx = context.WithValue(ctx, ContextKeySessionID, sessionID)
+	if g.toolProfile != "" {
+		ctx = context.WithValue(ctx, requestctx.ToolProfileKey, g.toolProfile)
+	}
 
 	session := g.sessions.GetOrCreate(sessionID, channel)
 
@@ -68,7 +82,7 @@ func (g *Gateway) HandleMessageStream(ctx context.Context, sessionID, channel, m
 	ch, err := g.agent.RunStream(ctx, session, message)
 	if err != nil {
 		g.queue.Release(sessionID)
-		return nil, fmt.Errorf("agent run stream: %w", err)
+		return nil, fmt.Errorf("agents run stream: %w", err)
 	}
 
 	out := make(chan models.StreamChunk)
