@@ -104,6 +104,7 @@ channels:
     enabled: false
     app_id: "${FEISHU_APP_ID}"           # 飞书应用 App ID
     app_secret: "${FEISHU_APP_SECRET}"   # 飞书应用 App Secret
+    long_connection: false               # true 时主动建立长连接收事件，无需回调地址
     verification_token: "${FEISHU_VERIFICATION_TOKEN}" # 事件订阅校验 token
     encrypt_key: "${FEISHU_ENCRYPT_KEY}" # 可选：事件加密 key
 

@@ -3,6 +3,7 @@ package channels
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -15,6 +16,8 @@ import (
 	"github.com/YumingHuang/claw/internal/gateway"
 	"github.com/YumingHuang/claw/internal/llm"
 	"github.com/YumingHuang/claw/internal/tools"
+	larkevent "github.com/larksuite/oapi-sdk-go/v3/event"
+	larkim "github.com/larksuite/oapi-sdk-go/v3/service/im/v1"
 )
 
 type mockFeishuSender struct {
@@ -26,6 +29,17 @@ type mockFeishuSender struct {
 type feishuSentMsg struct {
 	ChatID string
 	Text   string
+}
+
+type mockFeishuLongConnRunner struct {
+	startFn func(ctx context.Context) error
+}
+
+func (m *mockFeishuLongConnRunner) Start(ctx context.Context) error {
+	if m.startFn != nil {
+		return m.startFn(ctx)
+	}
+	return nil
 }
 
 func newMockFeishuSender() *mockFeishuSender {
@@ -82,6 +96,14 @@ func newTestFeishuChannel(t *testing.T) (*FeishuChannel, *mockFeishuSender) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v1/feishu/webhook", ch.handleWebhook)
 	ch.handler = mux
+	return ch, sender
+}
+
+func newTestLongConnectionChannel(t *testing.T, runner feishuLongConnRunner) (*FeishuChannel, *mockFeishuSender) {
+	t.Helper()
+	ch, sender := newTestFeishuChannel(t)
+	ch.config.LongConnection = true
+	ch.longConnRunner = runner
 	return ch, sender
 }
 
@@ -208,6 +230,93 @@ func TestFeishuWebhook_DuplicateEvent(t *testing.T) {
 	}
 }
 
+func TestFeishuLongConnection_StartsRunner(t *testing.T) {
+	started := make(chan struct{}, 1)
+	ch, _ := newTestLongConnectionChannel(t, &mockFeishuLongConnRunner{
+		startFn: func(ctx context.Context) error {
+			started <- struct{}{}
+			<-ctx.Done()
+			return nil
+		},
+	})
+
+	runCtx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	done := make(chan error, 1)
+	go func() {
+		done <- ch.Start(runCtx)
+	}()
+
+	select {
+	case <-started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("expected long connection runner to start")
+	}
+
+	if err := ch.Stop(context.Background()); err != nil {
+		t.Fatalf("stop: %v", err)
+	}
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("start returned error: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("expected long connection runner to stop after cancellation")
+	}
+}
+
+func TestFeishuLongConnection_StartPropagatesError(t *testing.T) {
+	wantErr := errors.New("connect failed")
+	ch, _ := newTestLongConnectionChannel(t, &mockFeishuLongConnRunner{
+		startFn: func(ctx context.Context) error {
+			return wantErr
+		},
+	})
+
+	err := ch.Start(context.Background())
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("err = %v, want %v", err, wantErr)
+	}
+}
+
+func TestFeishuLongConnection_MessageReceive(t *testing.T) {
+	ch, sender := newTestFeishuChannel(t)
+
+	event := &larkim.P2MessageReceiveV1{
+		EventV2Base: &larkevent.EventV2Base{
+			Header: &larkevent.EventHeader{
+				EventID:   "evt_long_1",
+				EventType: "im.message.receive_v1",
+			},
+		},
+		Event: &larkim.P2MessageReceiveV1Data{
+			Message: &larkim.EventMessage{
+				ChatId:      stringPtr("oc_chat_long"),
+				MessageType: stringPtr("text"),
+				Content:     stringPtr(`{"text":"hello over ws"}`),
+				Mentions: []*larkim.MentionEvent{
+					{Key: stringPtr("@_user_1"), Name: stringPtr("Bot")},
+				},
+			},
+		},
+	}
+
+	if err := ch.handleLongConnMessage(context.Background(), event); err != nil {
+		t.Fatalf("handleLongConnMessage: %v", err)
+	}
+
+	msgs := sender.waitMessages(1, 5*time.Second)
+	if len(msgs) == 0 {
+		t.Fatal("expected reply from long connection event")
+	}
+	if msgs[0].ChatID != "oc_chat_long" {
+		t.Errorf("chatID = %q, want %q", msgs[0].ChatID, "oc_chat_long")
+	}
+}
+
 func TestFeishuWebhook_NonTextMessage(t *testing.T) {
 	ch, sender := newTestFeishuChannel(t)
 
@@ -260,6 +369,10 @@ func TestFeishuWebhook_InvalidJSON(t *testing.T) {
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want %d", w.Code, http.StatusBadRequest)
 	}
+}
+
+func stringPtr(value string) *string {
+	return &value
 }
 
 func TestFeishuWebhook_MethodNotAllowed(t *testing.T) {

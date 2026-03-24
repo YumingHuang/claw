@@ -13,12 +13,12 @@ import (
 	"github.com/YumingHuang/claw/internal/config"
 	"github.com/YumingHuang/claw/internal/gateway"
 	lark "github.com/larksuite/oapi-sdk-go/v3"
+	larkdispatcher "github.com/larksuite/oapi-sdk-go/v3/event/dispatcher"
 	larkim "github.com/larksuite/oapi-sdk-go/v3/service/im/v1"
+	larkws "github.com/larksuite/oapi-sdk-go/v3/ws"
 )
 
 const feishuMaxMsgLen = 4000
-
-// Feishu webhook event structures.
 
 type feishuWebhookBody struct {
 	Schema    string             `json:"schema"`
@@ -66,12 +66,14 @@ type feishuTextContent struct {
 	Text string `json:"text"`
 }
 
-// feishuSender abstracts message sending for testability.
 type feishuSender interface {
 	SendText(ctx context.Context, chatID, text string) error
 }
 
-// larkSender sends messages via the Feishu/Lark IM API.
+type feishuLongConnRunner interface {
+	Start(ctx context.Context) error
+}
+
 type larkSender struct {
 	client *lark.Client
 }
@@ -97,18 +99,19 @@ func (s *larkSender) SendText(ctx context.Context, chatID, text string) error {
 	return nil
 }
 
-// FeishuChannel receives messages from Feishu via webhook and replies via IM API.
+// FeishuChannel supports both webhook delivery and active long-connection delivery.
 type FeishuChannel struct {
-	gateway *gateway.Gateway
-	sender  feishuSender
-	handler http.Handler
-	seen    sync.Map // event_id deduplication
-	config  config.FeishuChannelConfig
+	gateway        *gateway.Gateway
+	sender         feishuSender
+	handler        http.Handler
+	seen           sync.Map
+	config         config.FeishuChannelConfig
+	longConnRunner feishuLongConnRunner
+	cancelLongConn context.CancelFunc
 }
 
 func (f *FeishuChannel) Name() string { return "feishu" }
 
-// NewFeishuChannel creates a Feishu channel with the given gateway and config.
 func NewFeishuChannel(gw *gateway.Gateway, cfg config.FeishuChannelConfig) *FeishuChannel {
 	client := lark.NewClient(cfg.AppID, cfg.AppSecret)
 	ch := &FeishuChannel{
@@ -116,26 +119,48 @@ func NewFeishuChannel(gw *gateway.Gateway, cfg config.FeishuChannelConfig) *Feis
 		sender:  &larkSender{client: client},
 		config:  cfg,
 	}
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v1/feishu/webhook", ch.handleWebhook)
 	ch.handler = mux
+
+	if cfg.LongConnection {
+		dispatcher := larkdispatcher.NewEventDispatcher(cfg.VerificationToken, cfg.EncryptKey)
+		dispatcher.OnP2MessageReceiveV1(ch.handleLongConnMessage)
+		ch.longConnRunner = larkws.NewClient(
+			cfg.AppID,
+			cfg.AppSecret,
+			larkws.WithEventHandler(dispatcher),
+		)
+	}
+
 	return ch
 }
 
-// Handler returns the HTTP handler for the Feishu webhook endpoint.
 func (f *FeishuChannel) Handler() http.Handler {
 	return f.handler
 }
 
-// Start is a no-op; the webhook handler is mounted on the HTTP channel.
-func (f *FeishuChannel) Start(_ context.Context) error {
-	slog.Info("feishu channel enabled")
-	return nil
+func (f *FeishuChannel) Start(ctx context.Context) error {
+	if !f.config.LongConnection {
+		slog.Info("feishu channel enabled", "mode", "webhook")
+		return nil
+	}
+	if f.longConnRunner == nil {
+		return fmt.Errorf("feishu long connection runner is not configured")
+	}
+
+	slog.Info("feishu channel enabled", "mode", "long_connection")
+	longCtx, cancel := context.WithCancel(ctx)
+	f.cancelLongConn = cancel
+	return f.longConnRunner.Start(longCtx)
 }
 
-// Stop is a no-op; connections close when the HTTP server shuts down.
 func (f *FeishuChannel) Stop(_ context.Context) error {
 	slog.Info("feishu channel stopping")
+	if f.cancelLongConn != nil {
+		f.cancelLongConn()
+	}
 	return nil
 }
 
@@ -165,7 +190,6 @@ func (f *FeishuChannel) handleWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// URL verification challenge
 	if event.Type == "url_verification" {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]string{"challenge": event.Challenge})
@@ -177,13 +201,6 @@ func (f *FeishuChannel) handleWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Deduplicate by event_id
-	if _, loaded := f.seen.LoadOrStore(event.Header.EventID, struct{}{}); loaded {
-		slog.Debug("feishu: duplicate event", "event_id", event.Header.EventID)
-		w.WriteHeader(http.StatusOK)
-		return
-	}
-
 	var msgEvent feishuMsgEvent
 	if err := json.Unmarshal(event.Event, &msgEvent); err != nil {
 		slog.Error("feishu: parse message event", "error", err)
@@ -191,34 +208,78 @@ func (f *FeishuChannel) handleWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if msgEvent.Message.MessageType != "text" {
-		slog.Debug("feishu: unsupported message type", "type", msgEvent.Message.MessageType)
-		w.WriteHeader(http.StatusOK)
-		return
-	}
-
-	// Acknowledge immediately; process asynchronously
 	w.WriteHeader(http.StatusOK)
 
 	go func() {
 		defer func() {
 			if rv := recover(); rv != nil {
-				slog.Error("feishu: panic in processMessage", "error", rv,
-					"chat_id", msgEvent.Message.ChatID)
+				slog.Error("feishu: panic in processMessage", "error", rv, "chat_id", msgEvent.Message.ChatID)
 			}
 		}()
-		f.processMessage(msgEvent.Message.ChatID, msgEvent.Message.Content, msgEvent.Message.Mentions)
+		f.handleIncomingMessage(
+			event.Header.EventID,
+			msgEvent.Message.ChatID,
+			msgEvent.Message.MessageType,
+			msgEvent.Message.Content,
+			msgEvent.Message.Mentions,
+		)
 	}()
 }
 
-func (f *FeishuChannel) processMessage(chatID, contentJSON string, mentions []feishuMention) {
+func (f *FeishuChannel) handleLongConnMessage(_ context.Context, event *larkim.P2MessageReceiveV1) error {
+	if event == nil || event.Event == nil || event.Event.Message == nil {
+		return nil
+	}
+
+	msg := event.Event.Message
+	mentions := make([]feishuMention, 0, len(msg.Mentions))
+	for _, mention := range msg.Mentions {
+		if mention == nil {
+			continue
+		}
+		item := feishuMention{}
+		if mention.Key != nil {
+			item.Key = *mention.Key
+		}
+		if mention.Name != nil {
+			item.Name = *mention.Name
+		}
+		mentions = append(mentions, item)
+	}
+
+	eventID := ""
+	if event.EventV2Base != nil && event.EventV2Base.Header != nil {
+		eventID = event.EventV2Base.Header.EventID
+	}
+
+	f.handleIncomingMessage(
+		eventID,
+		derefString(msg.ChatId),
+		derefString(msg.MessageType),
+		derefString(msg.Content),
+		mentions,
+	)
+	return nil
+}
+
+func (f *FeishuChannel) handleIncomingMessage(eventID, chatID, messageType, contentJSON string, mentions []feishuMention) {
+	if eventID != "" {
+		if _, loaded := f.seen.LoadOrStore(eventID, struct{}{}); loaded {
+			slog.Debug("feishu: duplicate event", "event_id", eventID)
+			return
+		}
+	}
+	if messageType != "text" {
+		slog.Debug("feishu: unsupported message type", "type", messageType)
+		return
+	}
+
 	text := extractFeishuText(contentJSON, mentions)
 	if text == "" {
 		return
 	}
 
 	ctx := context.Background()
-
 	resp, err := f.gateway.HandleMessage(ctx, chatID, "feishu", text)
 	if err != nil {
 		slog.Error("feishu: handle message failed", "chat_id", chatID, "error", err)
@@ -239,8 +300,6 @@ func (f *FeishuChannel) processMessage(chatID, contentJSON string, mentions []fe
 	}
 }
 
-// extractFeishuText extracts plain text from Feishu message content JSON
-// and strips bot mention placeholders.
 func extractFeishuText(contentJSON string, mentions []feishuMention) string {
 	var tc feishuTextContent
 	if err := json.Unmarshal([]byte(contentJSON), &tc); err != nil {
@@ -253,8 +312,6 @@ func extractFeishuText(contentJSON string, mentions []feishuMention) string {
 	return strings.TrimSpace(text)
 }
 
-// splitFeishuMessage splits text into segments of at most maxLen runes,
-// preferring to break at newline boundaries.
 func splitFeishuMessage(text string, maxLen int) []string {
 	if maxLen <= 0 {
 		maxLen = feishuMaxMsgLen
@@ -278,10 +335,16 @@ func splitFeishuMessage(text string, maxLen int) []string {
 				break
 			}
 		}
-
 		segments = append(segments, string(runes[:cut]))
 		runes = runes[cut:]
 	}
 
 	return segments
+}
+
+func derefString(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return *value
 }

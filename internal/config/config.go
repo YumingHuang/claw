@@ -119,6 +119,7 @@ type FeishuChannelConfig struct {
 	AppSecret         string `yaml:"app_secret"`
 	VerificationToken string `yaml:"verification_token"`
 	EncryptKey        string `yaml:"encrypt_key"`
+	LongConnection    bool   `yaml:"long_connection"`
 }
 
 // AuthConfig holds authentication configuration.

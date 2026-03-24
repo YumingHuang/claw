@@ -57,6 +57,9 @@ func TestLoad_ValidConfig(t *testing.T) {
 	if !cfg.Channels.WebSocket.Enabled {
 		t.Error("expected WebSocket channel to be enabled")
 	}
+	if cfg.Channels.Feishu.LongConnection {
+		t.Error("expected Feishu long connection to be disabled")
+	}
 }
 
 // TestLoad_Defaults tests that default values are applied.

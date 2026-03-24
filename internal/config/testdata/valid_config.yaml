@@ -65,6 +65,7 @@ channels:
     enabled: false
     app_id: ""
     app_secret: ""
+    long_connection: false
 
 auth:
   enabled: true

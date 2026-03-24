@@ -140,7 +140,9 @@ func main() {
 
 	if cfg.Channels.Feishu.Enabled {
 		feishuCh := channels.NewFeishuChannel(gw, cfg.Channels.Feishu)
-		httpCh.MountHandler("/v1/feishu/webhook", feishuCh.Handler())
+		if !cfg.Channels.Feishu.LongConnection {
+			httpCh.MountHandler("/v1/feishu/webhook", feishuCh.Handler())
+		}
 		activeChannels = append(activeChannels, feishuCh)
 	}
 

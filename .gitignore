@@ -6,3 +6,5 @@ coverage.html
 .idea/
 .vscode/
 .DS_Store
+.claude/
+configs/config.yaml
