@@ -2,47 +2,60 @@ package tools
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/YumingHuang/claw/internal/models"
 	"github.com/YumingHuang/claw/internal/requestctx"
+	_ "modernc.org/sqlite"
 )
 
-// MemoryStore keeps per-session key/value memory in process memory.
-type MemoryStore struct {
+// MemoryStore defines the backing store used by memory tools.
+type MemoryStore interface {
+	Get(sessionID, key string) (string, bool, error)
+	Set(sessionID, key, value string) error
+	List(sessionID string) (map[string]string, error)
+}
+
+// InMemoryStore keeps per-session key/value memory in process memory.
+type InMemoryStore struct {
 	mu   sync.RWMutex
 	data map[string]map[string]string
 }
 
-func NewMemoryStore() *MemoryStore {
-	return &MemoryStore{data: make(map[string]map[string]string)}
+func NewMemoryStore() *InMemoryStore {
+	return &InMemoryStore{data: make(map[string]map[string]string)}
 }
 
-func (s *MemoryStore) get(sessionID, key string) (string, bool) {
+func (s *InMemoryStore) Get(sessionID, key string) (string, bool, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	sessionData, ok := s.data[sessionID]
 	if !ok {
-		return "", false
+		return "", false, nil
 	}
 	value, ok := sessionData[key]
-	return value, ok
+	return value, ok, nil
 }
 
-func (s *MemoryStore) set(sessionID, key, value string) {
+func (s *InMemoryStore) Set(sessionID, key, value string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if _, ok := s.data[sessionID]; !ok {
 		s.data[sessionID] = make(map[string]string)
 	}
 	s.data[sessionID][key] = value
+	return nil
 }
 
-func (s *MemoryStore) list(sessionID string) map[string]string {
+func (s *InMemoryStore) List(sessionID string) (map[string]string, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	sessionData := s.data[sessionID]
@@ -50,24 +63,110 @@ func (s *MemoryStore) list(sessionID string) map[string]string {
 	for key, value := range sessionData {
 		result[key] = value
 	}
-	return result
+	return result, nil
+}
+
+// SQLiteMemoryStore persists per-session key/value memory in SQLite.
+type SQLiteMemoryStore struct {
+	db *sql.DB
+}
+
+func NewSQLiteMemoryStore(ctx context.Context, dbPath string) (*SQLiteMemoryStore, error) {
+	if err := os.MkdirAll(filepath.Dir(dbPath), 0755); err != nil {
+		return nil, fmt.Errorf("create sqlite dir: %w", err)
+	}
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		return nil, fmt.Errorf("open sqlite: %w", err)
+	}
+	store := &SQLiteMemoryStore{db: db}
+	if err := store.initSchema(); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
+	go func() {
+		<-ctx.Done()
+		_ = db.Close()
+	}()
+	return store, nil
+}
+
+func (s *SQLiteMemoryStore) initSchema() error {
+	_, err := s.db.Exec(`
+		CREATE TABLE IF NOT EXISTS memories (
+			session_id TEXT NOT NULL,
+			key TEXT NOT NULL,
+			value TEXT NOT NULL,
+			updated_at DATETIME NOT NULL,
+			PRIMARY KEY (session_id, key)
+		)
+	`)
+	if err != nil {
+		return fmt.Errorf("create memories table: %w", err)
+	}
+	return nil
+}
+
+func (s *SQLiteMemoryStore) Get(sessionID, key string) (string, bool, error) {
+	row := s.db.QueryRow(`SELECT value FROM memories WHERE session_id = ? AND key = ?`, sessionID, key)
+	var value string
+	if err := row.Scan(&value); err != nil {
+		if err == sql.ErrNoRows {
+			return "", false, nil
+		}
+		return "", false, fmt.Errorf("query memory: %w", err)
+	}
+	return value, true, nil
+}
+
+func (s *SQLiteMemoryStore) Set(sessionID, key, value string) error {
+	_, err := s.db.Exec(`
+		INSERT INTO memories (session_id, key, value, updated_at)
+		VALUES (?, ?, ?, ?)
+		ON CONFLICT(session_id, key) DO UPDATE SET
+			value = excluded.value,
+			updated_at = excluded.updated_at
+	`, sessionID, key, value, time.Now())
+	if err != nil {
+		return fmt.Errorf("upsert memory: %w", err)
+	}
+	return nil
+}
+
+func (s *SQLiteMemoryStore) List(sessionID string) (map[string]string, error) {
+	rows, err := s.db.Query(`SELECT key, value FROM memories WHERE session_id = ? ORDER BY key`, sessionID)
+	if err != nil {
+		return nil, fmt.Errorf("list memories: %w", err)
+	}
+	defer rows.Close()
+
+	result := make(map[string]string)
+	for rows.Next() {
+		var key string
+		var value string
+		if err := rows.Scan(&key, &value); err != nil {
+			return nil, fmt.Errorf("scan memory: %w", err)
+		}
+		result[key] = value
+	}
+	return result, nil
 }
 
 type MemoryGetTool struct {
-	store *MemoryStore
+	store MemoryStore
 }
 
 type MemorySetTool struct {
-	store *MemoryStore
+	store MemoryStore
 }
 
 type MemoryListTool struct {
-	store *MemoryStore
+	store MemoryStore
 }
 
-func NewMemoryGetTool(store *MemoryStore) *MemoryGetTool   { return &MemoryGetTool{store: store} }
-func NewMemorySetTool(store *MemoryStore) *MemorySetTool   { return &MemorySetTool{store: store} }
-func NewMemoryListTool(store *MemoryStore) *MemoryListTool { return &MemoryListTool{store: store} }
+func NewMemoryGetTool(store MemoryStore) *MemoryGetTool   { return &MemoryGetTool{store: store} }
+func NewMemorySetTool(store MemoryStore) *MemorySetTool   { return &MemorySetTool{store: store} }
+func NewMemoryListTool(store MemoryStore) *MemoryListTool { return &MemoryListTool{store: store} }
 
 func (t *MemoryGetTool) Name() string { return "memory_get" }
 func (t *MemoryGetTool) Description() string {
@@ -92,7 +191,10 @@ func (t *MemoryGetTool) Execute(ctx context.Context, params json.RawMessage) (mo
 		return models.ToolResult{Content: "key is required", IsError: true}, nil
 	}
 
-	value, ok := t.store.get(sessionID, p.Key)
+	value, ok, err := t.store.Get(sessionID, p.Key)
+	if err != nil {
+		return models.ToolResult{Content: fmt.Sprintf("memory lookup failed: %v", err), IsError: true}, nil
+	}
 	if !ok {
 		return models.ToolResult{Content: fmt.Sprintf("memory key not found: %s", p.Key), IsError: true}, nil
 	}
@@ -123,7 +225,9 @@ func (t *MemorySetTool) Execute(ctx context.Context, params json.RawMessage) (mo
 		return models.ToolResult{Content: "key is required", IsError: true}, nil
 	}
 
-	t.store.set(sessionID, p.Key, p.Value)
+	if err := t.store.Set(sessionID, p.Key, p.Value); err != nil {
+		return models.ToolResult{Content: fmt.Sprintf("memory store failed: %v", err), IsError: true}, nil
+	}
 	return models.ToolResult{Content: fmt.Sprintf("stored memory key %q", p.Key)}, nil
 }
 
@@ -141,7 +245,10 @@ func (t *MemoryListTool) Execute(ctx context.Context, _ json.RawMessage) (models
 		return models.ToolResult{Content: err.Error(), IsError: true}, nil
 	}
 
-	items := t.store.list(sessionID)
+	items, err := t.store.List(sessionID)
+	if err != nil {
+		return models.ToolResult{Content: fmt.Sprintf("memory list failed: %v", err), IsError: true}, nil
+	}
 	if len(items) == 0 {
 		return models.ToolResult{Content: "no memory entries found"}, nil
 	}

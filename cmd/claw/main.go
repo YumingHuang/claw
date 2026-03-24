@@ -70,19 +70,6 @@ func main() {
 		slog.Error("register tool", "error", err)
 		os.Exit(1)
 	}
-	memoryStore := tools.NewMemoryStore()
-	if err := registry.Register(tools.NewMemoryGetTool(memoryStore)); err != nil {
-		slog.Error("register tool", "error", err)
-		os.Exit(1)
-	}
-	if err := registry.Register(tools.NewMemorySetTool(memoryStore)); err != nil {
-		slog.Error("register tool", "error", err)
-		os.Exit(1)
-	}
-	if err := registry.Register(tools.NewMemoryListTool(memoryStore)); err != nil {
-		slog.Error("register tool", "error", err)
-		os.Exit(1)
-	}
 	if cfg.Tools.Workdir != "" {
 		if err := registry.Register(tools.NewReadFileTool(cfg.Tools.Workdir, cfg.Tools.MaxOutputChars)); err != nil {
 			slog.Error("register tool", "error", err)
@@ -114,6 +101,24 @@ func main() {
 	// --- Gateway ---
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+
+	memoryStore, err := createMemoryStore(ctx, cfg)
+	if err != nil {
+		slog.Error("failed to create memory store", "error", err)
+		os.Exit(1)
+	}
+	if err := registry.Register(tools.NewMemoryGetTool(memoryStore)); err != nil {
+		slog.Error("register tool", "error", err)
+		os.Exit(1)
+	}
+	if err := registry.Register(tools.NewMemorySetTool(memoryStore)); err != nil {
+		slog.Error("register tool", "error", err)
+		os.Exit(1)
+	}
+	if err := registry.Register(tools.NewMemoryListTool(memoryStore)); err != nil {
+		slog.Error("register tool", "error", err)
+		os.Exit(1)
+	}
 
 	sessionStore, err := createSessionStore(ctx, cfg)
 	if err != nil {
@@ -251,4 +256,11 @@ func createSessionStore(ctx context.Context, cfg *config.Config) (gateway.Sessio
 		return gateway.NewSQLiteSessionStore(ctx, cfg.Session.SQLitePath, cfg.Session.TTL, cfg.Session.CleanupInterval)
 	}
 	return gateway.NewMemorySessionStore(ctx, cfg.Session.TTL, cfg.Session.MaxHistory, cfg.Session.CleanupInterval), nil
+}
+
+func createMemoryStore(ctx context.Context, cfg *config.Config) (tools.MemoryStore, error) {
+	if cfg.Session.SQLitePath != "" {
+		return tools.NewSQLiteMemoryStore(ctx, cfg.Session.SQLitePath)
+	}
+	return tools.NewMemoryStore(), nil
 }

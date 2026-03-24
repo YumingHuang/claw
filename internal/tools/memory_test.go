@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -100,5 +101,39 @@ func TestMemoryRequiresSessionContext(t *testing.T) {
 	}
 	if !strings.Contains(result.Content, "session_id is required") {
 		t.Fatalf("content = %q", result.Content)
+	}
+}
+
+func TestSQLiteMemoryStorePersistsAcrossRestart(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "memory.sqlite")
+
+	ctx1, cancel1 := context.WithCancel(context.Background())
+	store1, err := NewSQLiteMemoryStore(ctx1, dbPath)
+	if err != nil {
+		t.Fatalf("NewSQLiteMemoryStore first: %v", err)
+	}
+	setTool := NewMemorySetTool(store1)
+	_, err = setTool.Execute(memoryContext("session-a"), json.RawMessage(`{"key":"name","value":"persistent"}`))
+	if err != nil {
+		t.Fatalf("memory_set: %v", err)
+	}
+	cancel1()
+
+	ctx2, cancel2 := context.WithCancel(context.Background())
+	defer cancel2()
+	store2, err := NewSQLiteMemoryStore(ctx2, dbPath)
+	if err != nil {
+		t.Fatalf("NewSQLiteMemoryStore second: %v", err)
+	}
+	getTool := NewMemoryGetTool(store2)
+	result, err := getTool.Execute(memoryContext("session-a"), json.RawMessage(`{"key":"name"}`))
+	if err != nil {
+		t.Fatalf("memory_get: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("memory_get error: %s", result.Content)
+	}
+	if result.Content != "persistent" {
+		t.Fatalf("content = %q, want persistent", result.Content)
 	}
 }

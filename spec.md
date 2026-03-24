@@ -102,9 +102,9 @@
 ### 3.2 第二期（多通道与多模型）
 
 - **WebSocket 通道**：双向实时通信，支持打字状态推送
-- **飞书通道**：通过飞书开放平台事件订阅接收消息
+- **飞书通道**：支持飞书开放平台事件订阅（Webhook）与长连接两种收消息模式
 - **多模型**：多 Provider 配置与自动故障转移（主→备）
-- **工具扩展**：`web_search`、`memory_get/set`（键值记忆，按 namespace 隔离）
+- **工具扩展**：`web_search`、`memory_get/set/list`（键值记忆，按 session_id 隔离）
 - **技能/插件**：从目录加载技能配置（YAML + Markdown），将 instructions 注入系统提示
 - **工具权限 Profile**：按 profile（full / minimal / custom）控制可用工具集
 
@@ -113,7 +113,8 @@
 - **鉴权**：HTTP API Key（Bearer / X-API-Key）、Webhook 签名校验
 - **媒体**：图片/语音的接收、存储与转发给多模态 LLM
 - **审计与日志**：敏感操作审计日志（命令执行、文件写入），日志可脱敏
-- **持久化会话**：SQLite / BoltDB 落盘，支持跨重启恢复
+- **持久化会话**：SQLite 落盘，支持跨重启恢复
+- **持久化记忆**：`memory_*` 在配置 SQLite 后跨重启保留
 - **速率限制**：按 session / API key 限制请求频率（令牌桶算法）
 - **部署**：多阶段 Docker 构建、docker-compose 示例、systemd unit 文件
 - **可观测**：Prometheus metrics（请求数、延迟 P50/P99、工具调用次数、Token 消耗）
@@ -453,6 +454,9 @@ channels:
     enabled: false
     app_id: "${FEISHU_APP_ID}"
     app_secret: "${FEISHU_APP_SECRET}"
+    long_connection: false
+    verification_token: "${FEISHU_VERIFICATION_TOKEN}"
+    encrypt_key: "${FEISHU_ENCRYPT_KEY}"
 
 auth:
   enabled: false
@@ -489,7 +493,8 @@ rate_limit:
 - 结构化日志（JSON 格式），每条日志包含 request_id、session_id
 - request_id 在入口层生成，贯穿整个请求链路
 - 关键指标日志：LLM 调用延迟、token 消耗、工具调用次数
-- 可选 Prometheus metrics endpoint（`/metrics`）
+- Prometheus metrics endpoint（`/metrics`）
+- 提供 `GET /health` 与 `GET /ready`
 
 ### 7.4 性能目标
 

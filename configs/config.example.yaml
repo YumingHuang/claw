@@ -29,7 +29,7 @@ session:
   ttl: 1h                 # 会话过期时间
   max_history: 100        # 最大历史消息条数
   cleanup_interval: 5m    # 过期会话清理间隔
-  sqlite_path: ""         # 可选：SQLite 持久化路径，需绝对路径
+  sqlite_path: ""         # 可选：SQLite 持久化路径，需绝对路径；session 与 memory_* 共用
 
 providers:
   default: "openai"       # 默认使用的 provider 名称
@@ -104,9 +104,9 @@ channels:
     enabled: false
     app_id: "${FEISHU_APP_ID}"           # 飞书应用 App ID
     app_secret: "${FEISHU_APP_SECRET}"   # 飞书应用 App Secret
-    long_connection: false               # true 时主动建立长连接收事件，无需回调地址
-    verification_token: "${FEISHU_VERIFICATION_TOKEN}" # 事件订阅校验 token
-    encrypt_key: "${FEISHU_ENCRYPT_KEY}" # 可选：事件加密 key
+    long_connection: false               # true 时主动建立长连接收事件，无需回调地址；false 时使用 Webhook
+    verification_token: "${FEISHU_VERIFICATION_TOKEN}" # Webhook 事件订阅校验 token；长连接模式下可留空
+    encrypt_key: "${FEISHU_ENCRYPT_KEY}" # Webhook 可选事件加密 key；长连接模式下通常留空
 
 auth:
   enabled: false                          # 是否启用 API Key 认证

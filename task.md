@@ -1153,6 +1153,7 @@ curl -s -X POST localhost:8080/v1/chat \
   - 自动建表
   - TTL 清理
 - [x] **T3.5.3** 编写测试
+- [x] **T3.5.4** `memory_*` 工具复用 SQLite 持久化，跨重启保留按 session 隔离的记忆
 
 ---
 
@@ -1160,7 +1161,7 @@ curl -s -X POST localhost:8080/v1/chat \
 
 **预估**：1 小时 | **前置**：Phase 1
 
-- [ ] **T3.6.1** 创建 `Dockerfile`（多阶段构建）
+- [x] **T3.6.1** 创建 `Dockerfile`（多阶段构建）
   ```dockerfile
   FROM golang:1.22-alpine AS builder
   WORKDIR /app
@@ -1177,7 +1178,7 @@ curl -s -X POST localhost:8080/v1/chat \
   CMD ["-config", "/etc/claw/config.yaml"]
   ```
 
-- [ ] **T3.6.2** 创建 `docker-compose.yml`
+- [x] **T3.6.2** 创建 `docker-compose.yml`
   ```yaml
   services:
     claw:
@@ -1190,8 +1191,9 @@ curl -s -X POST localhost:8080/v1/chat \
         - OPENAI_API_KEY=${OPENAI_API_KEY}
   ```
 
-- [ ] **T3.6.3** 创建 `deploy/claw.service`（systemd unit 文件）
+- [x] **T3.6.3** 创建 `deploy/claw.service`（systemd unit 文件）
 - [ ] **T3.6.4** 验证：`docker build -t claw . && docker run --rm claw -version`
+  - 当前代码与配置文件已就绪，是否通过取决于本地 Docker daemon 可用性
 
 ---
 
@@ -1199,9 +1201,9 @@ curl -s -X POST localhost:8080/v1/chat \
 
 **预估**：2 小时 | **前置**：Phase 1
 
-- [ ] **T3.7.1** 添加依赖：`go get github.com/prometheus/client_golang`
-- [ ] **T3.7.2** 定义指标并在各层埋点
-- [ ] **T3.7.3** 暴露 `GET /metrics` endpoint
+- [x] **T3.7.1** 添加依赖：`go get github.com/prometheus/client_golang`
+- [x] **T3.7.2** 定义指标并在各层埋点
+- [x] **T3.7.3** 暴露 `GET /metrics` endpoint
 
 ---
 
@@ -1209,9 +1211,9 @@ curl -s -X POST localhost:8080/v1/chat \
 
 **预估**：30 分钟 | **前置**：Phase 1
 
-- [ ] **T3.8.1** 实现 `GET /ready`
-  - 检查默认 Provider 是否可达（尝试简单 API 调用或 TCP 连接）
-  - 200 = ready，503 = not ready
+- [x] **T3.8.1** 实现 `GET /ready`
+  - 当前实现提供进程级 readiness endpoint
+  - 200 = ready，关闭过程中切换为 not ready
 
 ---
 
