@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/YumingHuang/claw/internal/audit"
 	"github.com/YumingHuang/claw/internal/models"
 )
 
@@ -60,10 +61,11 @@ func (t *ReadFileTool) Execute(_ context.Context, params json.RawMessage) (model
 // WriteFileTool writes files within a sandboxed directory.
 type WriteFileTool struct {
 	workdir string
+	auditor *audit.Logger
 }
 
-func NewWriteFileTool(workdir string) *WriteFileTool {
-	return &WriteFileTool{workdir: workdir}
+func NewWriteFileTool(workdir string, auditor *audit.Logger) *WriteFileTool {
+	return &WriteFileTool{workdir: workdir, auditor: auditor}
 }
 
 func (t *WriteFileTool) Name() string        { return "write_file" }
@@ -72,7 +74,7 @@ func (t *WriteFileTool) Parameters() json.RawMessage {
 	return json.RawMessage(`{"type":"object","properties":{"path":{"type":"string","description":"File path relative to workdir"},"content":{"type":"string","description":"Content to write"}},"required":["path","content"]}`)
 }
 
-func (t *WriteFileTool) Execute(_ context.Context, params json.RawMessage) (models.ToolResult, error) {
+func (t *WriteFileTool) Execute(ctx context.Context, params json.RawMessage) (models.ToolResult, error) {
 	var p struct {
 		Path    string `json:"path"`
 		Content string `json:"content"`
@@ -92,6 +94,9 @@ func (t *WriteFileTool) Execute(_ context.Context, params json.RawMessage) (mode
 
 	if err := os.WriteFile(absPath, []byte(p.Content), 0644); err != nil {
 		return models.ToolResult{Content: fmt.Sprintf("write error: %v", err), IsError: true}, nil
+	}
+	if t.auditor != nil {
+		t.auditor.LogFileWritten(ctx, p.Path, p.Content)
 	}
 
 	return models.ToolResult{Content: fmt.Sprintf("written %d bytes to %s", len(p.Content), p.Path)}, nil

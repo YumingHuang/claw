@@ -1103,11 +1103,11 @@ curl -s -X POST localhost:8080/v1/chat \
 
 **预估**：1 小时 | **前置**：Phase 1
 
-- [ ] **T3.1.1** 创建 `internal/channels/middleware.go` — `AuthMiddleware`
+- [x] **T3.1.1** 创建 `internal/channels/middleware.go` — `AuthMiddleware`
   - 检查 `Authorization: Bearer <key>` 或 `X-API-Key` header
   - `crypto/subtle.ConstantTimeCompare` 比对
   - `auth.enabled: false` 时跳过
-- [ ] **T3.1.2** 编写测试
+- [x] **T3.1.2** 编写测试
 
 ---
 
@@ -1115,7 +1115,7 @@ curl -s -X POST localhost:8080/v1/chat \
 
 **预估**：30 分钟 | **前置**：T2.5
 
-- [ ] **T3.2.1** 校验飞书事件订阅的请求签名（Verification Token / Encrypt Key）
+- [x] **T3.2.1** 校验飞书事件订阅的请求签名（Verification Token / Encrypt Key）
 
 ---
 
@@ -1123,11 +1123,11 @@ curl -s -X POST localhost:8080/v1/chat \
 
 **预估**：1.5 小时 | **前置**：Phase 1
 
-- [ ] **T3.3.1** 实现令牌桶限流中间件
+- [x] **T3.3.1** 实现令牌桶限流中间件
   - 可用 `golang.org/x/time/rate`
   - 按 IP 或 API Key 分桶
   - 超限 → 429 + Retry-After header
-- [ ] **T3.3.2** 编写测试
+- [x] **T3.3.2** 编写测试
 
 ---
 
@@ -1135,11 +1135,11 @@ curl -s -X POST localhost:8080/v1/chat \
 
 **预估**：1.5 小时 | **前置**：Phase 1
 
-- [ ] **T3.4.1** 定义审计事件类型与 logger
+- [x] **T3.4.1** 定义审计事件类型与 logger
   - 独立的 slog handler 输出到审计文件
   - 事件：tool_executed、file_written、command_run、auth_failed
-- [ ] **T3.4.2** 在工具执行和鉴权失败时写入审计日志
-- [ ] **T3.4.3** 敏感内容脱敏（API Key 前 4 位，长内容截断）
+- [x] **T3.4.2** 在工具执行和鉴权失败时写入审计日志
+- [x] **T3.4.3** 敏感内容脱敏（API Key 前 4 位，长内容截断）
 
 ---
 
@@ -1147,12 +1147,12 @@ curl -s -X POST localhost:8080/v1/chat \
 
 **预估**：3 小时 | **前置**：T1.8
 
-- [ ] **T3.5.1** 添加依赖：`go get modernc.org/sqlite`
-- [ ] **T3.5.2** 创建 `internal/gateway/session_sqlite.go`
+- [x] **T3.5.1** 添加依赖：`go get modernc.org/sqlite`
+- [x] **T3.5.2** 创建 `internal/gateway/session_sqlite.go`
   - 实现 `SessionStore` 接口
   - 自动建表
   - TTL 清理
-- [ ] **T3.5.3** 编写测试
+- [x] **T3.5.3** 编写测试
 
 ---
 

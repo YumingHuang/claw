@@ -210,6 +210,24 @@ func TestLoad_InvalidDefaultToolProfile(t *testing.T) {
 	}
 }
 
+func TestLoad_InvalidAuthConfig(t *testing.T) {
+	configPath := "testdata/invalid_auth_config.yaml"
+	_, err := Load(configPath)
+
+	if err == nil {
+		t.Error("expected error for invalid auth config, got nil")
+	}
+}
+
+func TestLoad_RelativeSQLitePath(t *testing.T) {
+	configPath := "testdata/relative_sqlite_path_config.yaml"
+	_, err := Load(configPath)
+
+	if err == nil {
+		t.Error("expected error for relative sqlite path, got nil")
+	}
+}
+
 // TestExpandEnv tests the expandEnv function.
 func TestExpandEnv(t *testing.T) {
 	os.Setenv("TEST_VAR", "test-value")

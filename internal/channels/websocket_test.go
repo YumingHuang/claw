@@ -6,12 +6,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/coder/websocket"
-	"github.com/coder/websocket/wsjson"
 	"github.com/YumingHuang/claw/internal/agent"
+	"github.com/YumingHuang/claw/internal/config"
 	"github.com/YumingHuang/claw/internal/gateway"
 	"github.com/YumingHuang/claw/internal/llm"
 	"github.com/YumingHuang/claw/internal/tools"
+	"github.com/coder/websocket"
+	"github.com/coder/websocket/wsjson"
 )
 
 func newTestWebSocketServer(t *testing.T) (*httptest.Server, *WebSocketChannel) {
@@ -261,7 +262,7 @@ func TestWebSocket_MountOnHTTPChannel(t *testing.T) {
 	queue := agent.NewSessionQueue()
 	gw := gateway.NewGateway(a, sessions, queue)
 
-	httpCh := NewHTTPChannel(gw, ":0")
+	httpCh := NewHTTPChannel(gw, ":0", config.AuthConfig{}, config.RateLimitConfig{}, nil, nil)
 	wsCh := NewWebSocketChannel(gw, 30*time.Second)
 	httpCh.MountHandler("/v1/ws", wsCh.Handler())
 

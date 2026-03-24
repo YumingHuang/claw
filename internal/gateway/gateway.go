@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/YumingHuang/claw/internal/agent"
+	"github.com/YumingHuang/claw/internal/metrics"
 	"github.com/YumingHuang/claw/internal/models"
 	"github.com/YumingHuang/claw/internal/requestctx"
 	"github.com/google/uuid"
@@ -18,6 +19,7 @@ type Gateway struct {
 	sessions    SessionStore
 	queue       *agent.SessionQueue
 	toolProfile string
+	metrics     *metrics.Collector
 }
 
 // NewGateway creates a Gateway.
@@ -28,6 +30,11 @@ func NewGateway(a *agent.Agent, sessions SessionStore, queue *agent.SessionQueue
 // SetToolProfile configures the default tool profile applied to incoming requests.
 func (g *Gateway) SetToolProfile(profile string) {
 	g.toolProfile = profile
+}
+
+// SetMetrics configures the metrics collector used by the gateway.
+func (g *Gateway) SetMetrics(collector *metrics.Collector) {
+	g.metrics = collector
 }
 
 // HandleMessage processes a non-streaming chat request.
@@ -49,6 +56,9 @@ func (g *Gateway) HandleMessage(ctx context.Context, sessionID, channel, message
 	latency := time.Since(start)
 
 	if err != nil {
+		if g.metrics != nil {
+			g.metrics.ObserveGatewayRequest(channel, false, "error", latency)
+		}
 		slog.Error("handle message failed",
 			"request_id", requestID, "session_id", sessionID, "latency", latency, "error", err)
 		return nil, fmt.Errorf("agents run: %w", err)
@@ -60,6 +70,9 @@ func (g *Gateway) HandleMessage(ctx context.Context, sessionID, channel, message
 		Message:   models.NewAssistantMessage(result),
 	}
 
+	if g.metrics != nil {
+		g.metrics.ObserveGatewayRequest(channel, false, "success", latency)
+	}
 	slog.Info("handle message",
 		"request_id", requestID, "session_id", sessionID, "latency", latency)
 
@@ -74,6 +87,7 @@ func (g *Gateway) HandleMessageStream(ctx context.Context, sessionID, channel, m
 	if g.toolProfile != "" {
 		ctx = context.WithValue(ctx, requestctx.ToolProfileKey, g.toolProfile)
 	}
+	start := time.Now()
 
 	session := g.sessions.GetOrCreate(sessionID, channel)
 
@@ -82,6 +96,9 @@ func (g *Gateway) HandleMessageStream(ctx context.Context, sessionID, channel, m
 	ch, err := g.agent.RunStream(ctx, session, message)
 	if err != nil {
 		g.queue.Release(sessionID)
+		if g.metrics != nil {
+			g.metrics.ObserveGatewayRequest(channel, true, "error", time.Since(start))
+		}
 		return nil, fmt.Errorf("agents run stream: %w", err)
 	}
 
@@ -89,8 +106,15 @@ func (g *Gateway) HandleMessageStream(ctx context.Context, sessionID, channel, m
 	go func() {
 		defer close(out)
 		defer g.queue.Release(sessionID)
+		status := "success"
 		for chunk := range ch {
+			if chunk.Err != nil {
+				status = "error"
+			}
 			out <- chunk
+		}
+		if g.metrics != nil {
+			g.metrics.ObserveGatewayRequest(channel, true, status, time.Since(start))
 		}
 	}()
 

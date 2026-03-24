@@ -1,0 +1,23 @@
+[Unit]
+Description=Claw AI Assistant
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=claw
+Group=claw
+WorkingDirectory=/var/lib/claw
+EnvironmentFile=-/etc/claw/claw.env
+ExecStart=/usr/local/bin/claw -config /etc/claw/config.yaml
+Restart=on-failure
+RestartSec=5s
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/claw /var/log/claw
+StateDirectory=claw
+LogsDirectory=claw
+
+[Install]
+WantedBy=multi-user.target

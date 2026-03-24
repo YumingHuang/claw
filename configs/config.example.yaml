@@ -14,6 +14,11 @@ log:
   format: "json"           # 日志格式：json | text
   output: "stdout"         # 日志输出：stdout | stderr | 文件路径
 
+audit:
+  enabled: false           # 是否启用审计日志
+  output: "logs/audit.log" # 审计日志文件
+  max_value_chars: 256     # 审计字段最大长度，超出会截断脱敏
+
 # 系统 Prompt，定义 AI 助手的行为
 system_prompt: |
   你是 Claw，一个由 Go 实现的个人 AI 助手。
@@ -24,6 +29,7 @@ session:
   ttl: 1h                 # 会话过期时间
   max_history: 100        # 最大历史消息条数
   cleanup_interval: 5m    # 过期会话清理间隔
+  sqlite_path: ""         # 可选：SQLite 持久化路径，需绝对路径
 
 providers:
   default: "openai"       # 默认使用的 provider 名称
@@ -98,6 +104,8 @@ channels:
     enabled: false
     app_id: "${FEISHU_APP_ID}"           # 飞书应用 App ID
     app_secret: "${FEISHU_APP_SECRET}"   # 飞书应用 App Secret
+    verification_token: "${FEISHU_VERIFICATION_TOKEN}" # 事件订阅校验 token
+    encrypt_key: "${FEISHU_ENCRYPT_KEY}" # 可选：事件加密 key
 
 auth:
   enabled: false                          # 是否启用 API Key 认证

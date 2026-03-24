@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -14,6 +15,7 @@ import (
 type Config struct {
 	Server       ServerConfig    `yaml:"server"`
 	Log          LogConfig       `yaml:"log"`
+	Audit        AuditConfig     `yaml:"audit"`
 	SystemPrompt string          `yaml:"system_prompt"`
 	Session      SessionConfig   `yaml:"session"`
 	Providers    ProvidersConfig `yaml:"providers"`
@@ -39,11 +41,19 @@ type LogConfig struct {
 	Output string `yaml:"output"` // stdout|stderr|filepath
 }
 
+// AuditConfig holds audit logger configuration.
+type AuditConfig struct {
+	Enabled       bool   `yaml:"enabled"`
+	Output        string `yaml:"output"`
+	MaxValueChars int    `yaml:"max_value_chars"`
+}
+
 // SessionConfig holds session management configuration.
 type SessionConfig struct {
 	TTL             time.Duration `yaml:"ttl"`
 	MaxHistory      int           `yaml:"max_history"`
 	CleanupInterval time.Duration `yaml:"cleanup_interval"`
+	SQLitePath      string        `yaml:"sqlite_path"`
 }
 
 // ProviderConfig holds a single LLM provider configuration.
@@ -104,9 +114,11 @@ type WebSocketChannelConfig struct {
 
 // FeishuChannelConfig holds Feishu channel configuration.
 type FeishuChannelConfig struct {
-	Enabled   bool   `yaml:"enabled"`
-	AppID     string `yaml:"app_id"`
-	AppSecret string `yaml:"app_secret"`
+	Enabled           bool   `yaml:"enabled"`
+	AppID             string `yaml:"app_id"`
+	AppSecret         string `yaml:"app_secret"`
+	VerificationToken string `yaml:"verification_token"`
+	EncryptKey        string `yaml:"encrypt_key"`
 }
 
 // AuthConfig holds authentication configuration.
@@ -190,6 +202,12 @@ func (c *Config) setDefaults() {
 	if c.Log.Output == "" {
 		c.Log.Output = "stdout"
 	}
+	if c.Audit.MaxValueChars == 0 {
+		c.Audit.MaxValueChars = 256
+	}
+	if c.Audit.Enabled && c.Audit.Output == "" {
+		c.Audit.Output = "logs/audit.log"
+	}
 
 	// Session defaults
 	if c.Session.TTL == 0 {
@@ -267,6 +285,9 @@ func (c *Config) validate() error {
 			return fmt.Errorf("tools.workdir must be an absolute path")
 		}
 	}
+	if c.Session.SQLitePath != "" && !filepath.IsAbs(c.Session.SQLitePath) {
+		return fmt.Errorf("session.sqlite_path must be an absolute path")
+	}
 
 	if c.Tools.DefaultProfile != "" {
 		if len(c.Tools.Profiles) == 0 {
@@ -275,6 +296,20 @@ func (c *Config) validate() error {
 		if _, ok := c.Tools.Profiles[c.Tools.DefaultProfile]; !ok {
 			return fmt.Errorf("tools.default_profile '%s' not found in tools.profiles", c.Tools.DefaultProfile)
 		}
+	}
+	if c.Auth.Enabled && len(c.Auth.APIKeys) == 0 {
+		return fmt.Errorf("auth.api_keys cannot be empty when auth is enabled")
+	}
+	if c.RateLimit.Enabled {
+		if c.RateLimit.RequestsPerMinute <= 0 {
+			return fmt.Errorf("rate_limit.requests_per_minute must be greater than 0")
+		}
+		if c.RateLimit.Burst <= 0 {
+			return fmt.Errorf("rate_limit.burst must be greater than 0")
+		}
+	}
+	if c.Audit.Enabled && strings.TrimSpace(c.Audit.Output) == "" {
+		return fmt.Errorf("audit.output cannot be empty when audit is enabled")
 	}
 
 	return nil

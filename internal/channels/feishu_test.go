@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/YumingHuang/claw/internal/agent"
+	"github.com/YumingHuang/claw/internal/config"
 	"github.com/YumingHuang/claw/internal/gateway"
 	"github.com/YumingHuang/claw/internal/llm"
 	"github.com/YumingHuang/claw/internal/tools"
@@ -76,6 +77,7 @@ func newTestFeishuChannel(t *testing.T) (*FeishuChannel, *mockFeishuSender) {
 	ch := &FeishuChannel{
 		gateway: gw,
 		sender:  sender,
+		config:  config.FeishuChannelConfig{},
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v1/feishu/webhook", ch.handleWebhook)
@@ -270,6 +272,29 @@ func TestFeishuWebhook_MethodNotAllowed(t *testing.T) {
 
 	if w.Code != http.StatusMethodNotAllowed {
 		t.Fatalf("status = %d, want %d", w.Code, http.StatusMethodNotAllowed)
+	}
+}
+
+func TestFeishuWebhook_VerificationToken(t *testing.T) {
+	ch, _ := newTestFeishuChannel(t)
+	ch.config.VerificationToken = "verify-token"
+
+	body, _ := json.Marshal(feishuWebhookBody{
+		Schema: "2.0",
+		Header: &feishuEventHeader{
+			EventID:   "evt_auth",
+			EventType: "im.message.receive_v1",
+			Token:     "bad-token",
+		},
+		Event: json.RawMessage(`{}`),
+	})
+	req := httptest.NewRequest(http.MethodPost, "/v1/feishu/webhook", strings.NewReader(string(body)))
+	w := httptest.NewRecorder()
+
+	ch.Handler().ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusUnauthorized)
 	}
 }
 

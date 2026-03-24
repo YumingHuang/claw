@@ -119,7 +119,7 @@ func TestReadFile_Truncation(t *testing.T) {
 
 func TestWriteFile_Normal(t *testing.T) {
 	dir := t.TempDir()
-	tool := NewWriteFileTool(dir)
+	tool := NewWriteFileTool(dir, nil)
 
 	result, err := tool.Execute(context.Background(), json.RawMessage(`{"path":"out.txt","content":"hello"}`))
 	if err != nil {
@@ -140,7 +140,7 @@ func TestWriteFile_Normal(t *testing.T) {
 
 func TestWriteFile_PathTraversal(t *testing.T) {
 	dir := t.TempDir()
-	tool := NewWriteFileTool(dir)
+	tool := NewWriteFileTool(dir, nil)
 
 	result, err := tool.Execute(context.Background(), json.RawMessage(`{"path":"../../evil.txt","content":"hack"}`))
 	if err != nil {
@@ -153,7 +153,7 @@ func TestWriteFile_PathTraversal(t *testing.T) {
 
 func TestWriteFile_CreateSubdir(t *testing.T) {
 	dir := t.TempDir()
-	tool := NewWriteFileTool(dir)
+	tool := NewWriteFileTool(dir, nil)
 
 	result, err := tool.Execute(context.Background(), json.RawMessage(`{"path":"sub/dir/file.txt","content":"nested"}`))
 	if err != nil {
@@ -175,7 +175,7 @@ func TestWriteFile_CreateSubdir(t *testing.T) {
 // --- RunCommandTool ---
 
 func TestRunCommand_Allowed(t *testing.T) {
-	tool := NewRunCommandTool([]string{"echo"}, 10000, 5*time.Second)
+	tool := NewRunCommandTool([]string{"echo"}, 10000, 5*time.Second, nil)
 	result, err := tool.Execute(context.Background(), json.RawMessage(`{"command":"echo","args":["hello"]}`))
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
@@ -189,7 +189,7 @@ func TestRunCommand_Allowed(t *testing.T) {
 }
 
 func TestRunCommand_Denied(t *testing.T) {
-	tool := NewRunCommandTool([]string{"echo"}, 10000, 5*time.Second)
+	tool := NewRunCommandTool([]string{"echo"}, 10000, 5*time.Second, nil)
 	result, err := tool.Execute(context.Background(), json.RawMessage(`{"command":"rm","args":["-rf","/"]}`))
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
@@ -203,7 +203,7 @@ func TestRunCommand_Denied(t *testing.T) {
 }
 
 func TestRunCommand_Timeout(t *testing.T) {
-	tool := NewRunCommandTool([]string{"sleep"}, 10000, 500*time.Millisecond)
+	tool := NewRunCommandTool([]string{"sleep"}, 10000, 500*time.Millisecond, nil)
 	result, err := tool.Execute(context.Background(), json.RawMessage(`{"command":"sleep","args":["10"]}`))
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
@@ -214,7 +214,7 @@ func TestRunCommand_Timeout(t *testing.T) {
 }
 
 func TestRunCommand_OutputTruncation(t *testing.T) {
-	tool := NewRunCommandTool([]string{"echo"}, 5, 5*time.Second)
+	tool := NewRunCommandTool([]string{"echo"}, 5, 5*time.Second, nil)
 	result, err := tool.Execute(context.Background(), json.RawMessage(`{"command":"echo","args":["this is a long string"]}`))
 	if err != nil {
 		t.Fatalf("Execute: %v", err)

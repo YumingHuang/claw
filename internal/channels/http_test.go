@@ -10,8 +10,11 @@ import (
 	"time"
 
 	"github.com/YumingHuang/claw/internal/agent"
+	"github.com/YumingHuang/claw/internal/audit"
+	"github.com/YumingHuang/claw/internal/config"
 	"github.com/YumingHuang/claw/internal/gateway"
 	"github.com/YumingHuang/claw/internal/llm"
+	"github.com/YumingHuang/claw/internal/metrics"
 	"github.com/YumingHuang/claw/internal/tools"
 )
 
@@ -30,7 +33,13 @@ func (f *fakeProvider) ChatStream(_ context.Context, _ *llm.ChatRequest) (<-chan
 	return ch, nil
 }
 
-func newTestHTTPChannel() *HTTPChannel {
+type testHTTPChannelOptions struct {
+	auth    config.AuthConfig
+	rate    config.RateLimitConfig
+	auditor *audit.Logger
+}
+
+func newTestHTTPChannel(opts ...func(*testHTTPChannelOptions)) *HTTPChannel {
 	provider := &fakeProvider{response: &llm.ChatResponse{Content: "Hello!", FinishReason: "stop"}}
 	registry := tools.NewRegistry()
 	a := agent.NewAgent(provider, registry, agent.AgentOptions{
@@ -43,8 +52,15 @@ func newTestHTTPChannel() *HTTPChannel {
 	sessions := gateway.NewMemorySessionStore(ctx, 1*time.Hour, 100, 5*time.Minute)
 	queue := agent.NewSessionQueue()
 	gw := gateway.NewGateway(a, sessions, queue)
+	collector := metrics.New()
+	gw.SetMetrics(collector)
 
-	return NewHTTPChannel(gw, ":0")
+	options := testHTTPChannelOptions{}
+	for _, opt := range opts {
+		opt(&options)
+	}
+
+	return NewHTTPChannel(gw, ":0", options.auth, options.rate, options.auditor, collector)
 }
 
 func TestHandleChat_Sync(t *testing.T) {
@@ -176,5 +192,88 @@ func TestHandleStatus(t *testing.T) {
 	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	if resp["active_sessions"] == nil {
 		t.Error("active_sessions should be present")
+	}
+}
+
+func TestHandleReady(t *testing.T) {
+	ch := newTestHTTPChannel()
+	req := httptest.NewRequest(http.MethodGet, "/ready", nil)
+	w := httptest.NewRecorder()
+
+	ch.Router().ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusOK)
+	}
+}
+
+func TestHandleMetrics(t *testing.T) {
+	ch := newTestHTTPChannel()
+	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	w := httptest.NewRecorder()
+
+	ch.Router().ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusOK)
+	}
+	if !strings.Contains(w.Body.String(), "claw_app_ready") {
+		t.Fatal("expected Prometheus metrics output")
+	}
+}
+
+func TestAuthMiddleware_Authorized(t *testing.T) {
+	ch := newTestHTTPChannel(func(o *testHTTPChannelOptions) {
+		o.auth = config.AuthConfig{Enabled: true, APIKeys: []string{"secret"}}
+	})
+	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	req.Header.Set("X-API-Key", "secret")
+	w := httptest.NewRecorder()
+
+	ch.Router().ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusOK)
+	}
+}
+
+func TestAuthMiddleware_Unauthorized(t *testing.T) {
+	ch := newTestHTTPChannel(func(o *testHTTPChannelOptions) {
+		o.auth = config.AuthConfig{Enabled: true, APIKeys: []string{"secret"}}
+	})
+	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	w := httptest.NewRecorder()
+
+	ch.Router().ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusUnauthorized)
+	}
+}
+
+func TestRateLimitMiddleware(t *testing.T) {
+	ch := newTestHTTPChannel(func(o *testHTTPChannelOptions) {
+		o.rate = config.RateLimitConfig{Enabled: true, RequestsPerMinute: 1, Burst: 1}
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	req.RemoteAddr = "127.0.0.1:12345"
+	w := httptest.NewRecorder()
+	ch.Router().ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("first status = %d, want %d", w.Code, http.StatusOK)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/health", nil)
+	req.RemoteAddr = "127.0.0.1:12345"
+	w = httptest.NewRecorder()
+	ch.Router().ServeHTTP(w, req)
+
+	if w.Code != http.StatusTooManyRequests {
+		t.Fatalf("second status = %d, want %d", w.Code, http.StatusTooManyRequests)
+	}
+	if w.Header().Get("Retry-After") == "" {
+		t.Fatal("Retry-After should be set")
 	}
 }

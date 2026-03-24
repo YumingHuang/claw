@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"time"
 
+	"github.com/YumingHuang/claw/internal/audit"
 	"github.com/YumingHuang/claw/internal/models"
 )
 
@@ -15,14 +16,15 @@ type RunCommandTool struct {
 	allowed        map[string]bool
 	maxOutputChars int
 	timeout        time.Duration
+	auditor        *audit.Logger
 }
 
-func NewRunCommandTool(allowedCommands []string, maxOutputChars int, timeout time.Duration) *RunCommandTool {
+func NewRunCommandTool(allowedCommands []string, maxOutputChars int, timeout time.Duration, auditor *audit.Logger) *RunCommandTool {
 	allowed := make(map[string]bool, len(allowedCommands))
 	for _, c := range allowedCommands {
 		allowed[c] = true
 	}
-	return &RunCommandTool{allowed: allowed, maxOutputChars: maxOutputChars, timeout: timeout}
+	return &RunCommandTool{allowed: allowed, maxOutputChars: maxOutputChars, timeout: timeout, auditor: auditor}
 }
 
 func (t *RunCommandTool) Name() string        { return "run_command" }
@@ -56,8 +58,16 @@ func (t *RunCommandTool) Execute(ctx context.Context, params json.RawMessage) (m
 	}
 
 	if err != nil {
-		return models.ToolResult{Content: fmt.Sprintf("%s\nerror: %v", content, err), IsError: true}, nil
+		result := models.ToolResult{Content: fmt.Sprintf("%s\nerror: %v", content, err), IsError: true}
+		if t.auditor != nil {
+			t.auditor.LogCommandRun(ctx, p.Command, p.Args, result)
+		}
+		return result, nil
 	}
 
-	return models.ToolResult{Content: content}, nil
+	result := models.ToolResult{Content: content}
+	if t.auditor != nil {
+		t.auditor.LogCommandRun(ctx, p.Command, p.Args, result)
+	}
+	return result, nil
 }

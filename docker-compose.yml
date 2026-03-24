@@ -1,0 +1,24 @@
+version: "3.9"
+
+services:
+  claw:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: claw:latest
+    command: ["-config", "/etc/claw/config.yaml"]
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+    volumes:
+      - ./configs/config.yaml:/etc/claw/config.yaml:ro
+      - ./data:/var/lib/claw
+      - ./logs:/var/log/claw
+    environment:
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      BACKUP_API_KEY: ${BACKUP_API_KEY:-}
+      FEISHU_APP_ID: ${FEISHU_APP_ID:-}
+      FEISHU_APP_SECRET: ${FEISHU_APP_SECRET:-}
+      FEISHU_VERIFICATION_TOKEN: ${FEISHU_VERIFICATION_TOKEN:-}
+      FEISHU_ENCRYPT_KEY: ${FEISHU_ENCRYPT_KEY:-}
+      CLAW_API_KEY: ${CLAW_API_KEY:-}

@@ -47,6 +47,12 @@ make run
 # 健康检查
 curl http://localhost:8080/health
 
+# 就绪检查
+curl http://localhost:8080/ready
+
+# Prometheus 指标
+curl http://localhost:8080/metrics
+
 # 发送消息
 curl -X POST http://localhost:8080/v1/chat \
   -H "Content-Type: application/json" \
@@ -65,6 +71,15 @@ make lint       # 代码静态检查（需安装 golangci-lint）
 make coverage   # 生成测试覆盖率报告
 make clean      # 清理构建产物
 ```
+
+## 部署
+
+```bash
+docker build -t claw .
+docker compose up --build
+```
+
+`deploy/claw.service` 提供了 systemd unit 示例，可用于 Linux 主机常驻运行。
 
 ## 项目结构
 

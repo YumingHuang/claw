@@ -12,10 +12,12 @@ import (
 	"syscall"
 
 	"github.com/YumingHuang/claw/internal/agent"
+	"github.com/YumingHuang/claw/internal/audit"
 	"github.com/YumingHuang/claw/internal/channels"
 	"github.com/YumingHuang/claw/internal/config"
 	"github.com/YumingHuang/claw/internal/gateway"
 	"github.com/YumingHuang/claw/internal/llm"
+	"github.com/YumingHuang/claw/internal/metrics"
 	"github.com/YumingHuang/claw/internal/tools"
 )
 
@@ -39,6 +41,12 @@ func main() {
 
 	logger := setupLogger(cfg.Log)
 	slog.SetDefault(logger)
+	auditLogger, err := setupAuditLogger(cfg.Audit)
+	if err != nil {
+		slog.Error("failed to create audit logger", "error", err)
+		os.Exit(1)
+	}
+	collector := metrics.New()
 
 	// --- Providers ---
 	providers, err := createProviders(cfg)
@@ -56,6 +64,8 @@ func main() {
 
 	// --- Tools ---
 	registry := tools.NewRegistry()
+	registry.SetAuditor(auditLogger)
+	registry.SetMetrics(collector)
 	if err := registry.Register(tools.NewTimeTool()); err != nil {
 		slog.Error("register tool", "error", err)
 		os.Exit(1)
@@ -78,13 +88,13 @@ func main() {
 			slog.Error("register tool", "error", err)
 			os.Exit(1)
 		}
-		if err := registry.Register(tools.NewWriteFileTool(cfg.Tools.Workdir)); err != nil {
+		if err := registry.Register(tools.NewWriteFileTool(cfg.Tools.Workdir, auditLogger)); err != nil {
 			slog.Error("register tool", "error", err)
 			os.Exit(1)
 		}
 	}
 	if len(cfg.Tools.AllowedCommands) > 0 {
-		if err := registry.Register(tools.NewRunCommandTool(cfg.Tools.AllowedCommands, cfg.Tools.MaxOutputChars, cfg.Tools.Timeout)); err != nil {
+		if err := registry.Register(tools.NewRunCommandTool(cfg.Tools.AllowedCommands, cfg.Tools.MaxOutputChars, cfg.Tools.Timeout, auditLogger)); err != nil {
 			slog.Error("register tool", "error", err)
 			os.Exit(1)
 		}
@@ -105,14 +115,19 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	sessionStore := gateway.NewMemorySessionStore(ctx, cfg.Session.TTL, cfg.Session.MaxHistory, cfg.Session.CleanupInterval)
+	sessionStore, err := createSessionStore(ctx, cfg)
+	if err != nil {
+		slog.Error("failed to create session store", "error", err)
+		os.Exit(1)
+	}
 	queue := agent.NewSessionQueue()
 	gw := gateway.NewGateway(a, sessionStore, queue)
 	gw.SetToolProfile(cfg.Tools.DefaultProfile)
+	gw.SetMetrics(collector)
 
 	// --- Channels ---
 	addr := net.JoinHostPort(cfg.Server.Host, fmt.Sprintf("%d", cfg.Server.Port))
-	httpCh := channels.NewHTTPChannel(gw, addr)
+	httpCh := channels.NewHTTPChannel(gw, addr, cfg.Auth, cfg.RateLimit, auditLogger, collector)
 
 	var activeChannels []channels.Channel
 	activeChannels = append(activeChannels, httpCh)
@@ -220,4 +235,18 @@ func setupLogger(cfg config.LogConfig) *slog.Logger {
 	}
 
 	return slog.New(handler)
+}
+
+func setupAuditLogger(cfg config.AuditConfig) (*audit.Logger, error) {
+	if !cfg.Enabled {
+		return &audit.Logger{}, nil
+	}
+	return audit.NewLogger(cfg.Output, cfg.MaxValueChars)
+}
+
+func createSessionStore(ctx context.Context, cfg *config.Config) (gateway.SessionStore, error) {
+	if cfg.Session.SQLitePath != "" {
+		return gateway.NewSQLiteSessionStore(ctx, cfg.Session.SQLitePath, cfg.Session.TTL, cfg.Session.CleanupInterval)
+	}
+	return gateway.NewMemorySessionStore(ctx, cfg.Session.TTL, cfg.Session.MaxHistory, cfg.Session.CleanupInterval), nil
 }

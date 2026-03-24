@@ -10,10 +10,10 @@ import (
 	"strings"
 	"sync"
 
-	lark "github.com/larksuite/oapi-sdk-go/v3"
-	larkim "github.com/larksuite/oapi-sdk-go/v3/service/im/v1"
 	"github.com/YumingHuang/claw/internal/config"
 	"github.com/YumingHuang/claw/internal/gateway"
+	lark "github.com/larksuite/oapi-sdk-go/v3"
+	larkim "github.com/larksuite/oapi-sdk-go/v3/service/im/v1"
 )
 
 const feishuMaxMsgLen = 4000
@@ -103,6 +103,7 @@ type FeishuChannel struct {
 	sender  feishuSender
 	handler http.Handler
 	seen    sync.Map // event_id deduplication
+	config  config.FeishuChannelConfig
 }
 
 func (f *FeishuChannel) Name() string { return "feishu" }
@@ -113,6 +114,7 @@ func NewFeishuChannel(gw *gateway.Gateway, cfg config.FeishuChannelConfig) *Feis
 	ch := &FeishuChannel{
 		gateway: gw,
 		sender:  &larkSender{client: client},
+		config:  cfg,
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v1/feishu/webhook", ch.handleWebhook)
@@ -155,6 +157,11 @@ func (f *FeishuChannel) handleWebhook(w http.ResponseWriter, r *http.Request) {
 	if err := json.Unmarshal(body, &event); err != nil {
 		slog.Error("feishu: parse event", "error", err)
 		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	if err := verifyFeishuToken(f.config, event); err != nil {
+		slog.Error("feishu: verify token", "error", err)
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
 

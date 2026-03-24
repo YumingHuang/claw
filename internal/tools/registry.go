@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/YumingHuang/claw/internal/audit"
 	"github.com/YumingHuang/claw/internal/llm"
+	"github.com/YumingHuang/claw/internal/metrics"
 	"github.com/YumingHuang/claw/internal/models"
 )
 
@@ -23,6 +25,8 @@ type Registry struct {
 	order          []string // preserves insertion order for List()
 	profiles       map[string][]string
 	defaultProfile string
+	auditor        *audit.Logger
+	metrics        *metrics.Collector
 }
 
 // NewRegistry creates an empty tool registry.
@@ -56,7 +60,18 @@ func (r *Registry) Execute(ctx context.Context, name string, params json.RawMess
 	if !ok {
 		return models.ToolResult{Content: fmt.Sprintf("tool not found: %s", name), IsError: true}, fmt.Errorf("tool not found: %s", name)
 	}
-	return t.Execute(ctx, params)
+	result, err := t.Execute(ctx, params)
+	if r.auditor != nil {
+		r.auditor.LogToolExecuted(ctx, name, result)
+	}
+	if r.metrics != nil {
+		status := "success"
+		if err != nil || result.IsError {
+			status = "error"
+		}
+		r.metrics.ObserveToolExecution(name, status)
+	}
+	return result, err
 }
 
 // List returns all registered tools in insertion order.
@@ -106,6 +121,14 @@ func (r *Registry) SetProfiles(profiles map[string][]string, defaultProfile stri
 	r.profiles = normalized
 	r.defaultProfile = defaultProfile
 	return nil
+}
+
+func (r *Registry) SetAuditor(auditor *audit.Logger) {
+	r.auditor = auditor
+}
+
+func (r *Registry) SetMetrics(collector *metrics.Collector) {
+	r.metrics = collector
 }
 
 // FilterByProfile returns the tools enabled for the requested profile.
