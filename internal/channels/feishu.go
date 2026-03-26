@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/YumingHuang/claw/internal/config"
 	"github.com/YumingHuang/claw/internal/gateway"
@@ -68,6 +69,7 @@ type feishuTextContent struct {
 
 type feishuSender interface {
 	SendText(ctx context.Context, chatID, text string) error
+	SendMarkdown(ctx context.Context, chatID, markdown string) error
 }
 
 type feishuLongConnRunner interface {
@@ -80,12 +82,39 @@ type larkSender struct {
 
 func (s *larkSender) SendText(ctx context.Context, chatID, text string) error {
 	content, _ := json.Marshal(feishuTextContent{Text: text})
+	return s.sendMessage(ctx, chatID, "text", string(content))
+}
+
+func (s *larkSender) SendMarkdown(ctx context.Context, chatID, markdown string) error {
+	card := map[string]interface{}{
+		"type": "template",
+		"data": map[string]interface{}{
+			"template_variable": map[string]string{
+				"content": markdown,
+			},
+			"template_id": "",
+			"config": map[string]interface{}{
+				"update_multi": true,
+			},
+		},
+		"elements": []map[string]interface{}{
+			{
+				"tag":     "markdown",
+				"content": markdown,
+			},
+		},
+	}
+	content, _ := json.Marshal(card)
+	return s.sendMessage(ctx, chatID, "interactive", string(content))
+}
+
+func (s *larkSender) sendMessage(ctx context.Context, chatID, msgType, content string) error {
 	req := larkim.NewCreateMessageReqBuilder().
 		ReceiveIdType("chat_id").
 		Body(larkim.NewCreateMessageReqBodyBuilder().
 			ReceiveId(chatID).
-			MsgType("text").
-			Content(string(content)).
+			MsgType(msgType).
+			Content(content).
 			Build()).
 		Build()
 
@@ -104,10 +133,44 @@ type FeishuChannel struct {
 	gateway        *gateway.Gateway
 	sender         feishuSender
 	handler        http.Handler
-	seen           sync.Map
+	seen           sync.Map // eventID -> time.Time
 	config         config.FeishuChannelConfig
 	longConnRunner feishuLongConnRunner
 	cancelLongConn context.CancelFunc
+}
+
+// seenTTL controls how long event IDs are kept for deduplication.
+const seenTTL = 10 * time.Minute
+
+// dedupEvent returns true if the event was already seen.
+func (f *FeishuChannel) dedupEvent(eventID string) bool {
+	if eventID == "" {
+		return false
+	}
+	if _, loaded := f.seen.LoadOrStore(eventID, time.Now()); loaded {
+		return true
+	}
+	return false
+}
+
+// cleanupSeen removes expired entries from the seen map.
+func (f *FeishuChannel) cleanupSeen(ctx context.Context) {
+	ticker := time.NewTicker(seenTTL)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			now := time.Now()
+			f.seen.Range(func(key, value any) bool {
+				if now.Sub(value.(time.Time)) > seenTTL {
+					f.seen.Delete(key)
+				}
+				return true
+			})
+		}
+	}
 }
 
 func (f *FeishuChannel) Name() string { return "feishu" }
@@ -144,6 +207,7 @@ func (f *FeishuChannel) Handler() http.Handler {
 func (f *FeishuChannel) Start(ctx context.Context) error {
 	if !f.config.LongConnection {
 		slog.Info("feishu channel enabled", "mode", "webhook")
+		go f.cleanupSeen(ctx)
 		return nil
 	}
 	if f.longConnRunner == nil {
@@ -153,6 +217,7 @@ func (f *FeishuChannel) Start(ctx context.Context) error {
 	slog.Info("feishu channel enabled", "mode", "long_connection")
 	longCtx, cancel := context.WithCancel(ctx)
 	f.cancelLongConn = cancel
+	go f.cleanupSeen(longCtx)
 	return f.longConnRunner.Start(longCtx)
 }
 
@@ -263,14 +328,13 @@ func (f *FeishuChannel) handleLongConnMessage(_ context.Context, event *larkim.P
 }
 
 func (f *FeishuChannel) handleIncomingMessage(eventID, chatID, messageType, contentJSON string, mentions []feishuMention) {
-	if eventID != "" {
-		if _, loaded := f.seen.LoadOrStore(eventID, struct{}{}); loaded {
-			slog.Debug("feishu: duplicate event", "event_id", eventID)
-			return
-		}
+	if f.dedupEvent(eventID) {
+		slog.Debug("feishu: duplicate event", "event_id", eventID)
+		return
 	}
 	if messageType != "text" {
 		slog.Debug("feishu: unsupported message type", "type", messageType)
+		_ = f.sender.SendText(context.Background(), chatID, "暂时只支持文本消息哦，请发送文字~")
 		return
 	}
 
@@ -280,6 +344,10 @@ func (f *FeishuChannel) handleIncomingMessage(eventID, chatID, messageType, cont
 	}
 
 	ctx := context.Background()
+
+	// Send a "thinking" indicator so the user knows we're processing.
+	_ = f.sender.SendText(ctx, chatID, "🤔 思考中...")
+
 	resp, err := f.gateway.HandleMessage(ctx, chatID, "feishu", text)
 	if err != nil {
 		slog.Error("feishu: handle message failed", "chat_id", chatID, "error", err)
@@ -293,9 +361,13 @@ func (f *FeishuChannel) handleIncomingMessage(eventID, chatID, messageType, cont
 	}
 
 	for _, seg := range splitFeishuMessage(reply, feishuMaxMsgLen) {
-		if err := f.sender.SendText(ctx, chatID, seg); err != nil {
-			slog.Error("feishu: send reply failed", "chat_id", chatID, "error", err)
-			return
+		// Try markdown card first; fall back to plain text on error.
+		if err := f.sender.SendMarkdown(ctx, chatID, seg); err != nil {
+			slog.Debug("feishu: markdown send failed, falling back to text", "error", err)
+			if err := f.sender.SendText(ctx, chatID, seg); err != nil {
+				slog.Error("feishu: send reply failed", "chat_id", chatID, "error", err)
+				return
+			}
 		}
 	}
 }

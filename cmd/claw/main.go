@@ -18,6 +18,7 @@ import (
 	"github.com/YumingHuang/claw/internal/gateway"
 	"github.com/YumingHuang/claw/internal/llm"
 	"github.com/YumingHuang/claw/internal/metrics"
+	"github.com/YumingHuang/claw/internal/skills"
 	"github.com/YumingHuang/claw/internal/tools"
 )
 
@@ -92,10 +93,20 @@ func main() {
 	}
 
 	// --- Agent ---
+	systemPrompt := cfg.SystemPrompt
+	if skillsPrompt, err := skills.Load("skills", registry); err != nil {
+		slog.Warn("load skills", "error", err)
+	} else if skillsPrompt != "" {
+		systemPrompt = systemPrompt + "\n\n" + skillsPrompt
+	}
+
+	defaultProvider := findDefaultProvider(cfg)
 	a := agent.NewAgent(provider, registry, agent.AgentOptions{
-		SystemPrompt:  cfg.SystemPrompt,
+		SystemPrompt:  systemPrompt,
 		MaxIterations: cfg.Tools.MaxIterations,
 		ContextWindow: findContextWindow(cfg),
+		Temperature:   defaultProvider.Temperature,
+		MaxTokens:     defaultProvider.MaxTokens,
 	})
 
 	// --- Gateway ---
@@ -198,11 +209,19 @@ func createProviders(cfg *config.Config) (map[string]llm.Provider, error) {
 	return providers, nil
 }
 
-func findContextWindow(cfg *config.Config) int {
+func findDefaultProvider(cfg *config.Config) config.ProviderConfig {
 	for _, p := range cfg.Providers.List {
-		if p.Name == cfg.Providers.Default && p.ContextWindow > 0 {
-			return p.ContextWindow
+		if p.Name == cfg.Providers.Default {
+			return p
 		}
+	}
+	return cfg.Providers.List[0]
+}
+
+func findContextWindow(cfg *config.Config) int {
+	p := findDefaultProvider(cfg)
+	if p.ContextWindow > 0 {
+		return p.ContextWindow
 	}
 	return 128000
 }

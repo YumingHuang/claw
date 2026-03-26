@@ -54,6 +54,14 @@ func (m *mockFeishuSender) SendText(_ context.Context, chatID, text string) erro
 	return nil
 }
 
+func (m *mockFeishuSender) SendMarkdown(_ context.Context, chatID, markdown string) error {
+	m.mu.Lock()
+	m.messages = append(m.messages, feishuSentMsg{ChatID: chatID, Text: markdown})
+	m.mu.Unlock()
+	m.ch <- struct{}{}
+	return nil
+}
+
 func (m *mockFeishuSender) waitMessages(n int, timeout time.Duration) []feishuSentMsg {
 	timer := time.NewTimer(timeout)
 	defer timer.Stop()
@@ -168,15 +176,15 @@ func TestFeishuWebhook_TextMessage(t *testing.T) {
 		t.Fatalf("status = %d, want %d", w.Code, http.StatusOK)
 	}
 
-	msgs := sender.waitMessages(1, 5*time.Second)
-	if len(msgs) == 0 {
-		t.Fatal("expected at least 1 message sent")
+	msgs := sender.waitMessages(2, 5*time.Second)
+	if len(msgs) < 2 {
+		t.Fatal("expected at least 2 messages sent (thinking + reply)")
 	}
 	if msgs[0].ChatID != "oc_chat1" {
 		t.Errorf("chatID = %q, want %q", msgs[0].ChatID, "oc_chat1")
 	}
-	if msgs[0].Text != "feishu reply" {
-		t.Errorf("text = %q, want %q", msgs[0].Text, "feishu reply")
+	if msgs[1].Text != "feishu reply" {
+		t.Errorf("text = %q, want %q", msgs[1].Text, "feishu reply")
 	}
 }
 
@@ -190,12 +198,12 @@ func TestFeishuWebhook_MentionStrip(t *testing.T) {
 
 	ch.Handler().ServeHTTP(w, req)
 
-	msgs := sender.waitMessages(1, 5*time.Second)
-	if len(msgs) == 0 {
+	msgs := sender.waitMessages(2, 5*time.Second)
+	if len(msgs) < 2 {
 		t.Fatal("expected reply")
 	}
-	if msgs[0].Text != "feishu reply" {
-		t.Errorf("text = %q, want %q", msgs[0].Text, "feishu reply")
+	if msgs[1].Text != "feishu reply" {
+		t.Errorf("text = %q, want %q", msgs[1].Text, "feishu reply")
 	}
 }
 
@@ -208,7 +216,7 @@ func TestFeishuWebhook_DuplicateEvent(t *testing.T) {
 	w := httptest.NewRecorder()
 	ch.Handler().ServeHTTP(w, req)
 
-	sender.waitMessages(1, 5*time.Second)
+	sender.waitMessages(2, 5*time.Second) // thinking + reply
 
 	// Send same event again
 	req = httptest.NewRequest(http.MethodPost, "/v1/feishu/webhook", strings.NewReader(string(body)))
@@ -225,8 +233,8 @@ func TestFeishuWebhook_DuplicateEvent(t *testing.T) {
 	count := len(sender.messages)
 	sender.mu.Unlock()
 
-	if count != 1 {
-		t.Errorf("message count = %d, want 1 (dedup should prevent second)", count)
+	if count != 2 {
+		t.Errorf("message count = %d, want 2 (thinking + reply, dedup should prevent second)", count)
 	}
 }
 
@@ -308,8 +316,8 @@ func TestFeishuLongConnection_MessageReceive(t *testing.T) {
 		t.Fatalf("handleLongConnMessage: %v", err)
 	}
 
-	msgs := sender.waitMessages(1, 5*time.Second)
-	if len(msgs) == 0 {
+	msgs := sender.waitMessages(2, 5*time.Second)
+	if len(msgs) < 2 {
 		t.Fatal("expected reply from long connection event")
 	}
 	if msgs[0].ChatID != "oc_chat_long" {
@@ -353,8 +361,8 @@ func TestFeishuWebhook_NonTextMessage(t *testing.T) {
 	count := len(sender.messages)
 	sender.mu.Unlock()
 
-	if count != 0 {
-		t.Errorf("should not reply to non-text message, got %d messages", count)
+	if count != 1 {
+		t.Errorf("should reply with unsupported hint, got %d messages", count)
 	}
 }
 

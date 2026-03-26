@@ -15,6 +15,8 @@ type AgentOptions struct {
 	SystemPrompt  string
 	MaxIterations int
 	ContextWindow int
+	Temperature   float64
+	MaxTokens     int
 }
 
 // Agent orchestrates the LLM ↔ tool-calling loop for a session.
@@ -24,6 +26,8 @@ type Agent struct {
 	systemPrompt  string
 	maxIterations int
 	contextWindow int
+	temperature   float64
+	maxTokens     int
 }
 
 // NewAgent creates an Agent with the given provider, tool registry, and options.
@@ -34,6 +38,8 @@ func NewAgent(provider llm.Provider, registry *tools.Registry, opts AgentOptions
 		systemPrompt:  opts.SystemPrompt,
 		maxIterations: opts.MaxIterations,
 		contextWindow: opts.ContextWindow,
+		temperature:   opts.Temperature,
+		maxTokens:     opts.MaxTokens,
 	}
 }
 
@@ -57,10 +63,7 @@ func (a *Agent) Run(ctx context.Context, session *Session, userMessage string) (
 		}
 
 		msgs := a.buildContext(session)
-		req := &llm.ChatRequest{
-			Messages: msgs,
-			Tools:    a.toolSchemasForContext(ctx),
-		}
+		req := a.newChatRequest(ctx, msgs)
 
 		resp, err := a.provider.Chat(ctx, req)
 		if err != nil {
@@ -86,6 +89,8 @@ func (a *Agent) Run(ctx context.Context, session *Session, userMessage string) (
 }
 
 // RunStream executes the agents loop with streaming LLM responses.
+// It supports tool-call loops: when the LLM requests tool calls, tools are
+// executed and the LLM is called again until a text response is produced.
 func (a *Agent) RunStream(ctx context.Context, session *Session, userMessage string) (<-chan models.StreamChunk, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, fmt.Errorf("context cancelled: %w", err)
@@ -93,31 +98,58 @@ func (a *Agent) RunStream(ctx context.Context, session *Session, userMessage str
 
 	session.Append(models.NewUserMessage(userMessage))
 
-	msgs := a.buildContext(session)
-	req := &llm.ChatRequest{
-		Messages: msgs,
-		Tools:    a.toolSchemasForContext(ctx),
-	}
-
-	llmCh, err := a.provider.ChatStream(ctx, req)
-	if err != nil {
-		return nil, fmt.Errorf("provider chat stream: %w", err)
-	}
-
 	out := make(chan models.StreamChunk)
 	go func() {
 		defer close(out)
-		var fullContent string
-		for chunk := range llmCh {
-			fullContent += chunk.Delta
-			out <- models.StreamChunk{
-				Delta: chunk.Delta,
-				Done:  chunk.Done,
-				Usage: chunk.Usage,
-				Err:   chunk.Err,
+		for iteration := 0; ; iteration++ {
+			if iteration >= a.maxIterations {
+				out <- models.StreamChunk{Err: fmt.Errorf("max tool-call iterations exceeded (%d)", a.maxIterations), Done: true}
+				return
+			}
+			if err := ctx.Err(); err != nil {
+				out <- models.StreamChunk{Err: fmt.Errorf("context cancelled: %w", err), Done: true}
+				return
+			}
+
+			msgs := a.buildContext(session)
+			req := a.newChatRequest(ctx, msgs)
+
+			llmCh, err := a.provider.ChatStream(ctx, req)
+			if err != nil {
+				out <- models.StreamChunk{Err: fmt.Errorf("provider chat stream: %w", err), Done: true}
+				return
+			}
+
+			var fullContent string
+			var toolCalls []models.ToolCall
+			for chunk := range llmCh {
+				fullContent += chunk.Delta
+				toolCalls = append(toolCalls, chunk.ToolCalls...)
+				if chunk.Err != nil || len(chunk.ToolCalls) == 0 {
+					out <- models.StreamChunk{
+						Delta: chunk.Delta,
+						Done:  chunk.Done && len(toolCalls) == 0,
+						Usage: chunk.Usage,
+						Err:   chunk.Err,
+					}
+				}
+			}
+
+			if len(toolCalls) == 0 {
+				session.Append(models.NewAssistantMessage(fullContent))
+				return
+			}
+
+			// Tool call loop: execute tools and continue
+			assistantMsg := models.NewAssistantMessage(fullContent)
+			assistantMsg.ToolCalls = toolCalls
+			session.Append(assistantMsg)
+
+			for _, tc := range toolCalls {
+				result, _ := a.toolRegistry.Execute(ctx, tc.Name, tc.Arguments)
+				session.Append(models.NewToolResultMessage(tc.ID, result))
 			}
 		}
-		session.Append(models.NewAssistantMessage(fullContent))
 	}()
 
 	return out, nil
@@ -134,6 +166,15 @@ func (a *Agent) buildContext(session *Session) []models.Message {
 		msgs = llm.TruncateMessages(msgs, a.contextWindow)
 	}
 	return msgs
+}
+
+func (a *Agent) newChatRequest(ctx context.Context, msgs []models.Message) *llm.ChatRequest {
+	return &llm.ChatRequest{
+		Messages:    msgs,
+		Tools:       a.toolSchemasForContext(ctx),
+		Temperature: a.temperature,
+		MaxTokens:   a.maxTokens,
+	}
 }
 
 // ToolNames returns the names of all registered tools.

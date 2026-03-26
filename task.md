@@ -1254,18 +1254,18 @@ curl localhost:8080/ready                        # ✅ 200 或 503
 | T2.3 | Channel 接口抽象 | 1h | ✅ |
 | T2.4 | WebSocket Channel | 3h | ✅ |
 | T2.5 | 飞书 Channel | 3h | ✅ |
-| T2.6 | Web Search 工具 | 2h | ⬜ |
-| T2.7 | Memory 工具 | 1.5h | ⬜ |
-| T2.8 | 工具权限 Profile | 1h | ⬜ |
-| T2.9 | 技能系统 | 2h | ⬜ |
-| T3.1 | API Key 鉴权 | 1h | ⬜ |
-| T3.2 | 飞书签名校验 | 30m | ⬜ |
-| T3.3 | 速率限制 | 1.5h | ⬜ |
-| T3.4 | 审计日志 | 1.5h | ⬜ |
-| T3.5 | SQLite 持久化 | 3h | ⬜ |
-| T3.6 | Docker 化 | 1h | ⬜ |
-| T3.7 | Prometheus Metrics | 2h | ⬜ |
-| T3.8 | Readiness 检查 | 30m | ⬜ |
+| T2.6 | Web Search 工具 | 2h | ✅ |
+| T2.7 | Memory 工具 | 1.5h | ✅ |
+| T2.8 | 工具权限 Profile | 1h | ✅ |
+| T2.9 | 技能系统 | 2h | ✅ |
+| T3.1 | API Key 鉴权 | 1h | ✅ |
+| T3.2 | 飞书签名校验 | 30m | ✅ |
+| T3.3 | 速率限制 | 1.5h | ✅ |
+| T3.4 | 审计日志 | 1.5h | ✅ |
+| T3.5 | SQLite 持久化 | 3h | ✅ |
+| T3.6 | Docker 化 | 1h | ✅ |
+| T3.7 | Prometheus Metrics | 2h | ✅ |
+| T3.8 | Readiness 检查 | 30m | ✅ |
 
 **总计预估**：~52 小时
 
