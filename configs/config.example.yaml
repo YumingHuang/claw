@@ -108,6 +108,21 @@ tools:
       - "write_file"
       - "run_command"
 
+# MCP (Model Context Protocol) 外部工具服务器
+# 支持 stdio（本地进程）和 sse（远程 HTTP）两种方式
+mcp:
+  servers: []
+  # 示例 - 文件系统工具（stdio）:
+  # - name: "filesystem"
+  #   type: "stdio"
+  #   command: "npx"
+  #   args: ["-y", "@modelcontextprotocol/server-filesystem", "/your/workspace"]
+  #
+  # 示例 - 远程 SSE 服务器:
+  # - name: "my-mcp-server"
+  #   type: "sse"
+  #   url: "http://localhost:3000/sse"
+
 channels:
   # HTTP 通道配置
   http:
@@ -126,6 +141,7 @@ channels:
     long_connection: false               # true 时主动建立长连接收事件，无需回调地址；false 时使用 Webhook
     verification_token: "${FEISHU_VERIFICATION_TOKEN}" # Webhook 事件订阅校验 token；长连接模式下可留空
     encrypt_key: "${FEISHU_ENCRYPT_KEY}" # Webhook 可选事件加密 key；长连接模式下通常留空
+    thinking_emoji: "THINKING"           # 思考中 reaction 表情类型，参考飞书 emoji 枚举
 
 auth:
   enabled: false                          # 是否启用 API Key 认证

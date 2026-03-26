@@ -70,6 +70,10 @@ type feishuTextContent struct {
 type feishuSender interface {
 	SendText(ctx context.Context, chatID, text string) error
 	SendMarkdown(ctx context.Context, chatID, markdown string) error
+	ReplyText(ctx context.Context, messageID, text string) error
+	ReplyMarkdown(ctx context.Context, messageID, markdown string) error
+	AddReaction(ctx context.Context, messageID, emojiType string) (reactionID string, err error)
+	RemoveReaction(ctx context.Context, messageID, reactionID string) error
 }
 
 type feishuLongConnRunner interface {
@@ -121,6 +125,88 @@ func (s *larkSender) sendMessage(ctx context.Context, chatID, msgType, content s
 	resp, err := s.client.Im.Message.Create(ctx, req)
 	if err != nil {
 		return fmt.Errorf("feishu send: %w", err)
+	}
+	if !resp.Success() {
+		return fmt.Errorf("feishu API: code=%d msg=%s", resp.Code, resp.Msg)
+	}
+	return nil
+}
+
+func (s *larkSender) replyMessage(ctx context.Context, messageID, msgType, content string) error {
+	req := larkim.NewReplyMessageReqBuilder().
+		MessageId(messageID).
+		Body(larkim.NewReplyMessageReqBodyBuilder().
+			MsgType(msgType).
+			Content(content).
+			Build()).
+		Build()
+
+	resp, err := s.client.Im.Message.Reply(ctx, req)
+	if err != nil {
+		return fmt.Errorf("feishu reply: %w", err)
+	}
+	if !resp.Success() {
+		return fmt.Errorf("feishu API: code=%d msg=%s", resp.Code, resp.Msg)
+	}
+	return nil
+}
+
+func (s *larkSender) ReplyText(ctx context.Context, messageID, text string) error {
+	content, _ := json.Marshal(feishuTextContent{Text: text})
+	return s.replyMessage(ctx, messageID, "text", string(content))
+}
+
+func (s *larkSender) ReplyMarkdown(ctx context.Context, messageID, markdown string) error {
+	card := map[string]interface{}{
+		"type": "template",
+		"data": map[string]interface{}{
+			"template_variable": map[string]string{
+				"content": markdown,
+			},
+			"template_id": "",
+			"config": map[string]interface{}{
+				"update_multi": true,
+			},
+		},
+		"elements": []map[string]interface{}{
+			{
+				"tag":     "markdown",
+				"content": markdown,
+			},
+		},
+	}
+	content, _ := json.Marshal(card)
+	return s.replyMessage(ctx, messageID, "interactive", string(content))
+}
+
+func (s *larkSender) AddReaction(ctx context.Context, messageID, emojiType string) (string, error) {
+	req := larkim.NewCreateMessageReactionReqBuilder().
+		MessageId(messageID).
+		Body(larkim.NewCreateMessageReactionReqBodyBuilder().
+			ReactionType(&larkim.Emoji{EmojiType: &emojiType}).
+			Build()).
+		Build()
+	resp, err := s.client.Im.MessageReaction.Create(ctx, req)
+	if err != nil {
+		return "", fmt.Errorf("feishu add reaction: %w", err)
+	}
+	if !resp.Success() {
+		return "", fmt.Errorf("feishu API: code=%d msg=%s", resp.Code, resp.Msg)
+	}
+	if resp.Data != nil && resp.Data.ReactionId != nil {
+		return *resp.Data.ReactionId, nil
+	}
+	return "", nil
+}
+
+func (s *larkSender) RemoveReaction(ctx context.Context, messageID, reactionID string) error {
+	req := larkim.NewDeleteMessageReactionReqBuilder().
+		MessageId(messageID).
+		ReactionId(reactionID).
+		Build()
+	resp, err := s.client.Im.MessageReaction.Delete(ctx, req)
+	if err != nil {
+		return fmt.Errorf("feishu remove reaction: %w", err)
 	}
 	if !resp.Success() {
 		return fmt.Errorf("feishu API: code=%d msg=%s", resp.Code, resp.Msg)
@@ -284,6 +370,7 @@ func (f *FeishuChannel) handleWebhook(w http.ResponseWriter, r *http.Request) {
 		f.handleIncomingMessage(
 			event.Header.EventID,
 			msgEvent.Message.ChatID,
+			msgEvent.Message.MessageID,
 			msgEvent.Message.MessageType,
 			msgEvent.Message.Content,
 			msgEvent.Message.Mentions,
@@ -320,6 +407,7 @@ func (f *FeishuChannel) handleLongConnMessage(_ context.Context, event *larkim.P
 	f.handleIncomingMessage(
 		eventID,
 		derefString(msg.ChatId),
+		derefString(msg.MessageId),
 		derefString(msg.MessageType),
 		derefString(msg.Content),
 		mentions,
@@ -327,7 +415,7 @@ func (f *FeishuChannel) handleLongConnMessage(_ context.Context, event *larkim.P
 	return nil
 }
 
-func (f *FeishuChannel) handleIncomingMessage(eventID, chatID, messageType, contentJSON string, mentions []feishuMention) {
+func (f *FeishuChannel) handleIncomingMessage(eventID, chatID, messageID, messageType, contentJSON string, mentions []feishuMention) {
 	if f.dedupEvent(eventID) {
 		slog.Debug("feishu: duplicate event", "event_id", eventID)
 		return
@@ -345,13 +433,27 @@ func (f *FeishuChannel) handleIncomingMessage(eventID, chatID, messageType, cont
 
 	ctx := context.Background()
 
-	// Send a "thinking" indicator so the user knows we're processing.
-	_ = f.sender.SendText(ctx, chatID, "🤔 思考中...")
+	// Add a thinking emoji reaction to the user's message.
+	emojiType := f.config.ThinkingEmoji
+	if emojiType == "" {
+		emojiType = "THINKING"
+	}
+	reactionID, err := f.sender.AddReaction(ctx, messageID, emojiType)
+	if err != nil {
+		slog.Debug("feishu: add thinking reaction failed", "error", err)
+	}
 
 	resp, err := f.gateway.HandleMessage(ctx, chatID, "feishu", text)
+
+	// Remove the thinking reaction after processing.
+	if reactionID != "" {
+		if err := f.sender.RemoveReaction(ctx, messageID, reactionID); err != nil {
+			slog.Debug("feishu: remove thinking reaction failed", "error", err)
+		}
+	}
 	if err != nil {
 		slog.Error("feishu: handle message failed", "chat_id", chatID, "error", err)
-		_ = f.sender.SendText(ctx, chatID, fmt.Sprintf("处理消息时出错: %v", err))
+		_ = f.sender.ReplyText(ctx, messageID, fmt.Sprintf("处理消息时出错: %v", err))
 		return
 	}
 
@@ -362,9 +464,9 @@ func (f *FeishuChannel) handleIncomingMessage(eventID, chatID, messageType, cont
 
 	for _, seg := range splitFeishuMessage(reply, feishuMaxMsgLen) {
 		// Try markdown card first; fall back to plain text on error.
-		if err := f.sender.SendMarkdown(ctx, chatID, seg); err != nil {
-			slog.Debug("feishu: markdown send failed, falling back to text", "error", err)
-			if err := f.sender.SendText(ctx, chatID, seg); err != nil {
+		if err := f.sender.ReplyMarkdown(ctx, messageID, seg); err != nil {
+			slog.Debug("feishu: markdown reply failed, falling back to text", "error", err)
+			if err := f.sender.ReplyText(ctx, messageID, seg); err != nil {
 				slog.Error("feishu: send reply failed", "chat_id", chatID, "error", err)
 				return
 			}

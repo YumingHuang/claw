@@ -27,8 +27,9 @@ type mockFeishuSender struct {
 }
 
 type feishuSentMsg struct {
-	ChatID string
-	Text   string
+	ChatID    string
+	MessageID string
+	Text      string
 }
 
 type mockFeishuLongConnRunner struct {
@@ -59,6 +60,30 @@ func (m *mockFeishuSender) SendMarkdown(_ context.Context, chatID, markdown stri
 	m.messages = append(m.messages, feishuSentMsg{ChatID: chatID, Text: markdown})
 	m.mu.Unlock()
 	m.ch <- struct{}{}
+	return nil
+}
+
+func (m *mockFeishuSender) ReplyText(_ context.Context, messageID, text string) error {
+	m.mu.Lock()
+	m.messages = append(m.messages, feishuSentMsg{MessageID: messageID, Text: text})
+	m.mu.Unlock()
+	m.ch <- struct{}{}
+	return nil
+}
+
+func (m *mockFeishuSender) ReplyMarkdown(_ context.Context, messageID, markdown string) error {
+	m.mu.Lock()
+	m.messages = append(m.messages, feishuSentMsg{MessageID: messageID, Text: markdown})
+	m.mu.Unlock()
+	m.ch <- struct{}{}
+	return nil
+}
+
+func (m *mockFeishuSender) AddReaction(_ context.Context, _, _ string) (string, error) {
+	return "reaction_1", nil
+}
+
+func (m *mockFeishuSender) RemoveReaction(_ context.Context, _, _ string) error {
 	return nil
 }
 
@@ -176,15 +201,15 @@ func TestFeishuWebhook_TextMessage(t *testing.T) {
 		t.Fatalf("status = %d, want %d", w.Code, http.StatusOK)
 	}
 
-	msgs := sender.waitMessages(2, 5*time.Second)
-	if len(msgs) < 2 {
-		t.Fatal("expected at least 2 messages sent (thinking + reply)")
+	msgs := sender.waitMessages(1, 5*time.Second)
+	if len(msgs) < 1 {
+		t.Fatal("expected at least 1 message sent (reply)")
 	}
-	if msgs[0].ChatID != "oc_chat1" {
-		t.Errorf("chatID = %q, want %q", msgs[0].ChatID, "oc_chat1")
+	if msgs[0].MessageID != "msg_evt_001" {
+		t.Errorf("messageID = %q, want %q", msgs[0].MessageID, "msg_evt_001")
 	}
-	if msgs[1].Text != "feishu reply" {
-		t.Errorf("text = %q, want %q", msgs[1].Text, "feishu reply")
+	if msgs[0].Text != "feishu reply" {
+		t.Errorf("text = %q, want %q", msgs[0].Text, "feishu reply")
 	}
 }
 
@@ -198,12 +223,12 @@ func TestFeishuWebhook_MentionStrip(t *testing.T) {
 
 	ch.Handler().ServeHTTP(w, req)
 
-	msgs := sender.waitMessages(2, 5*time.Second)
-	if len(msgs) < 2 {
+	msgs := sender.waitMessages(1, 5*time.Second)
+	if len(msgs) < 1 {
 		t.Fatal("expected reply")
 	}
-	if msgs[1].Text != "feishu reply" {
-		t.Errorf("text = %q, want %q", msgs[1].Text, "feishu reply")
+	if msgs[0].Text != "feishu reply" {
+		t.Errorf("text = %q, want %q", msgs[0].Text, "feishu reply")
 	}
 }
 
@@ -216,7 +241,7 @@ func TestFeishuWebhook_DuplicateEvent(t *testing.T) {
 	w := httptest.NewRecorder()
 	ch.Handler().ServeHTTP(w, req)
 
-	sender.waitMessages(2, 5*time.Second) // thinking + reply
+	sender.waitMessages(1, 5*time.Second) // reply
 
 	// Send same event again
 	req = httptest.NewRequest(http.MethodPost, "/v1/feishu/webhook", strings.NewReader(string(body)))
@@ -233,8 +258,8 @@ func TestFeishuWebhook_DuplicateEvent(t *testing.T) {
 	count := len(sender.messages)
 	sender.mu.Unlock()
 
-	if count != 2 {
-		t.Errorf("message count = %d, want 2 (thinking + reply, dedup should prevent second)", count)
+	if count != 1 {
+		t.Errorf("message count = %d, want 1 (reply only, dedup should prevent second)", count)
 	}
 }
 
@@ -302,6 +327,7 @@ func TestFeishuLongConnection_MessageReceive(t *testing.T) {
 		},
 		Event: &larkim.P2MessageReceiveV1Data{
 			Message: &larkim.EventMessage{
+				MessageId:   stringPtr("msg_long_1"),
 				ChatId:      stringPtr("oc_chat_long"),
 				MessageType: stringPtr("text"),
 				Content:     stringPtr(`{"text":"hello over ws"}`),
@@ -316,12 +342,12 @@ func TestFeishuLongConnection_MessageReceive(t *testing.T) {
 		t.Fatalf("handleLongConnMessage: %v", err)
 	}
 
-	msgs := sender.waitMessages(2, 5*time.Second)
-	if len(msgs) < 2 {
+	msgs := sender.waitMessages(1, 5*time.Second)
+	if len(msgs) < 1 {
 		t.Fatal("expected reply from long connection event")
 	}
-	if msgs[0].ChatID != "oc_chat_long" {
-		t.Errorf("chatID = %q, want %q", msgs[0].ChatID, "oc_chat_long")
+	if msgs[0].MessageID != "msg_long_1" {
+		t.Errorf("messageID = %q, want %q", msgs[0].MessageID, "msg_long_1")
 	}
 }
 

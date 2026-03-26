@@ -17,6 +17,7 @@ import (
 	"github.com/YumingHuang/claw/internal/config"
 	"github.com/YumingHuang/claw/internal/gateway"
 	"github.com/YumingHuang/claw/internal/llm"
+	"github.com/YumingHuang/claw/internal/mcp"
 	"github.com/YumingHuang/claw/internal/metrics"
 	"github.com/YumingHuang/claw/internal/skills"
 	"github.com/YumingHuang/claw/internal/tools"
@@ -87,6 +88,35 @@ func main() {
 			os.Exit(1)
 		}
 	}
+	// --- Memory tools (must be registered before SetProfiles) ---
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	memoryStore, err := createMemoryStore(ctx, cfg)
+	if err != nil {
+		slog.Error("failed to create memory store", "error", err)
+		os.Exit(1)
+	}
+	if err := registry.Register(tools.NewMemoryGetTool(memoryStore)); err != nil {
+		slog.Error("register tool", "error", err)
+		os.Exit(1)
+	}
+	if err := registry.Register(tools.NewMemorySetTool(memoryStore)); err != nil {
+		slog.Error("register tool", "error", err)
+		os.Exit(1)
+	}
+	if err := registry.Register(tools.NewMemoryListTool(memoryStore)); err != nil {
+		slog.Error("register tool", "error", err)
+		os.Exit(1)
+	}
+
+	// --- MCP tools ---
+	for _, mcpTool := range mcp.LoadTools(ctx, cfg.MCP) {
+		if err := registry.Register(mcpTool); err != nil {
+			slog.Warn("mcp: failed to register tool", "name", mcpTool.Name(), "error", err)
+		}
+	}
+
 	if err := registry.SetProfiles(cfg.Tools.Profiles, cfg.Tools.DefaultProfile); err != nil {
 		slog.Error("configure tool profiles", "error", err)
 		os.Exit(1)
@@ -108,28 +138,6 @@ func main() {
 		Temperature:   defaultProvider.Temperature,
 		MaxTokens:     defaultProvider.MaxTokens,
 	})
-
-	// --- Gateway ---
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
-
-	memoryStore, err := createMemoryStore(ctx, cfg)
-	if err != nil {
-		slog.Error("failed to create memory store", "error", err)
-		os.Exit(1)
-	}
-	if err := registry.Register(tools.NewMemoryGetTool(memoryStore)); err != nil {
-		slog.Error("register tool", "error", err)
-		os.Exit(1)
-	}
-	if err := registry.Register(tools.NewMemorySetTool(memoryStore)); err != nil {
-		slog.Error("register tool", "error", err)
-		os.Exit(1)
-	}
-	if err := registry.Register(tools.NewMemoryListTool(memoryStore)); err != nil {
-		slog.Error("register tool", "error", err)
-		os.Exit(1)
-	}
 
 	sessionStore, err := createSessionStore(ctx, cfg)
 	if err != nil {

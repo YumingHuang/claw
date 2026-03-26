@@ -20,6 +20,7 @@ type Config struct {
 	Session      SessionConfig   `yaml:"session"`
 	Providers    ProvidersConfig `yaml:"providers"`
 	Tools        ToolsConfig     `yaml:"tools"`
+	MCP          MCPConfig       `yaml:"mcp"`
 	Channels     ChannelsConfig  `yaml:"channels"`
 	Auth         AuthConfig      `yaml:"auth"`
 	RateLimit    RateLimitConfig `yaml:"rate_limit"`
@@ -94,6 +95,21 @@ type ToolsConfig struct {
 	DefaultProfile  string              `yaml:"default_profile"`
 }
 
+// MCPServerConfig holds configuration for a single MCP server.
+type MCPServerConfig struct {
+	Name    string            `yaml:"name"`
+	Type    string            `yaml:"type"`    // "stdio" or "sse"
+	Command string            `yaml:"command"` // for stdio: executable path
+	Args    []string          `yaml:"args"`    // for stdio: arguments
+	URL     string            `yaml:"url"`     // for sse: server URL
+	Env     map[string]string `yaml:"env"`     // extra env vars for stdio
+}
+
+// MCPConfig holds MCP client configuration.
+type MCPConfig struct {
+	Servers []MCPServerConfig `yaml:"servers"`
+}
+
 // ChannelsConfig holds communication channel configuration.
 type ChannelsConfig struct {
 	HTTP      HTTPChannelConfig      `yaml:"http"`
@@ -120,6 +136,7 @@ type FeishuChannelConfig struct {
 	VerificationToken string `yaml:"verification_token"`
 	EncryptKey        string `yaml:"encrypt_key"`
 	LongConnection    bool   `yaml:"long_connection"`
+	ThinkingEmoji     string `yaml:"thinking_emoji"`
 }
 
 // AuthConfig holds authentication configuration.
