@@ -261,6 +261,9 @@ func (f *FeishuChannel) cleanupSeen(ctx context.Context) {
 
 func (f *FeishuChannel) Name() string { return "feishu" }
 
+// Sender returns the underlying sender for external use (e.g. cron notifications).
+func (f *FeishuChannel) Sender() feishuSender { return f.sender }
+
 func NewFeishuChannel(gw *gateway.Gateway, cfg config.FeishuChannelConfig) *FeishuChannel {
 	client := lark.NewClient(cfg.AppID, cfg.AppSecret)
 	ch := &FeishuChannel{

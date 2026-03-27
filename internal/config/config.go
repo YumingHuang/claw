@@ -21,6 +21,7 @@ type Config struct {
 	Providers    ProvidersConfig `yaml:"providers"`
 	Tools        ToolsConfig     `yaml:"tools"`
 	MCP          MCPConfig       `yaml:"mcp"`
+	Cron         CronConfig      `yaml:"cron"`
 	Channels     ChannelsConfig  `yaml:"channels"`
 	Auth         AuthConfig      `yaml:"auth"`
 	RateLimit    RateLimitConfig `yaml:"rate_limit"`
@@ -93,6 +94,7 @@ type ToolsConfig struct {
 	MaxIterations   int                 `yaml:"max_iterations"`
 	Profiles        map[string][]string `yaml:"profiles"`
 	DefaultProfile  string              `yaml:"default_profile"`
+	TavilyAPIKey    string              `yaml:"tavily_api_key"`
 }
 
 // MCPServerConfig holds configuration for a single MCP server.
@@ -108,6 +110,20 @@ type MCPServerConfig struct {
 // MCPConfig holds MCP client configuration.
 type MCPConfig struct {
 	Servers []MCPServerConfig `yaml:"servers"`
+}
+
+// CronJobConfig holds configuration for a single cron job.
+type CronJobConfig struct {
+	Name     string `yaml:"name"`
+	Schedule string `yaml:"schedule"` // cron expression, e.g. "0 18 * * 1-5"
+	Message  string `yaml:"message"`  // message sent to agent
+	Channel  string `yaml:"channel"`  // channel name for session, default "cron"
+	Notify   string `yaml:"notify"`   // notification target, e.g. "feishu:<chat_id>"
+}
+
+// CronConfig holds cron scheduler configuration.
+type CronConfig struct {
+	Jobs []CronJobConfig `yaml:"jobs"`
 }
 
 // ChannelsConfig holds communication channel configuration.

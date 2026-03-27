@@ -15,6 +15,7 @@ import (
 	"github.com/YumingHuang/claw/internal/audit"
 	"github.com/YumingHuang/claw/internal/channels"
 	"github.com/YumingHuang/claw/internal/config"
+	clawcron "github.com/YumingHuang/claw/internal/cron"
 	"github.com/YumingHuang/claw/internal/gateway"
 	"github.com/YumingHuang/claw/internal/llm"
 	"github.com/YumingHuang/claw/internal/mcp"
@@ -88,6 +89,12 @@ func main() {
 			os.Exit(1)
 		}
 	}
+	if cfg.Tools.TavilyAPIKey != "" {
+		if err := registry.Register(tools.NewSearchTool(cfg.Tools.TavilyAPIKey, "", nil)); err != nil {
+			slog.Error("register tool", "error", err)
+			os.Exit(1)
+		}
+	}
 	// --- Memory tools (must be registered before SetProfiles) ---
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
@@ -111,10 +118,18 @@ func main() {
 	}
 
 	// --- MCP tools ---
-	for _, mcpTool := range mcp.LoadTools(ctx, cfg.MCP) {
+	mcpTools := mcp.LoadTools(ctx, cfg.MCP)
+	for _, mcpTool := range mcpTools {
 		if err := registry.Register(mcpTool); err != nil {
 			slog.Warn("mcp: failed to register tool", "name", mcpTool.Name(), "error", err)
 		}
+	}
+	// Auto-add MCP tools to all profiles so the agent can use them.
+	for profile, names := range cfg.Tools.Profiles {
+		for _, t := range mcpTools {
+			names = append(names, t.Name())
+		}
+		cfg.Tools.Profiles[profile] = names
 	}
 
 	if err := registry.SetProfiles(cfg.Tools.Profiles, cfg.Tools.DefaultProfile); err != nil {
@@ -162,8 +177,9 @@ func main() {
 		activeChannels = append(activeChannels, wsCh)
 	}
 
+	var feishuCh *channels.FeishuChannel
 	if cfg.Channels.Feishu.Enabled {
-		feishuCh := channels.NewFeishuChannel(gw, cfg.Channels.Feishu)
+		feishuCh = channels.NewFeishuChannel(gw, cfg.Channels.Feishu)
 		if !cfg.Channels.Feishu.LongConnection {
 			httpCh.MountHandler("/v1/feishu/webhook", feishuCh.Handler())
 		}
@@ -181,6 +197,21 @@ func main() {
 	}
 
 	slog.Info("claw started", "version", version, "addr", addr)
+
+	// --- Cron ---
+	if len(cfg.Cron.Jobs) > 0 {
+		notifier := clawcron.NewMultiNotifier()
+		if feishuCh != nil {
+			notifier.Register("feishu", feishuCh.Sender())
+		}
+		scheduler, err := clawcron.New(gw, cfg.Cron.Jobs, notifier)
+		if err != nil {
+			slog.Error("cron setup failed", "error", err)
+			os.Exit(1)
+		}
+		scheduler.Start()
+		defer scheduler.Stop()
+	}
 
 	<-ctx.Done()
 	slog.Info("shutting down...")

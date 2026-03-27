@@ -97,6 +97,7 @@ tools:
   max_output_chars: 10000               # 工具输出最大字符数
   timeout: 30s                           # 单次工具调用超时
   max_iterations: 10                     # Agent 循环最大轮数
+  tavily_api_key: "${TAVILY_API_KEY}"    # Tavily 搜索 API Key（https://tavily.com 免费注册）
   default_profile: "default"             # 默认工具权限配置
   profiles:
     default:
@@ -107,6 +108,7 @@ tools:
       - "read_file"
       - "write_file"
       - "run_command"
+      - "web_search"
 
 # MCP (Model Context Protocol) 外部工具服务器
 # 支持 stdio（本地进程）和 sse（远程 HTTP）两种方式
@@ -122,6 +124,15 @@ mcp:
   # - name: "my-mcp-server"
   #   type: "sse"
   #   url: "http://localhost:3000/sse"
+
+# 定时任务：按 cron 表达式定时向 agent 发送消息
+# schedule 使用标准 5 位 cron 表达式（分 时 日 月 周）
+cron:
+  jobs: []
+  # - name: "daily_stock"
+  #   schedule: "0 18 * * 1-5"
+  #   message: "帮我分析一下今天的大盘走势"
+  #   channel: "cron"              # 可选，默认 "cron"
 
 channels:
   # HTTP 通道配置

@@ -140,9 +140,15 @@ func newClient(cfg config.MCPServerConfig) (*mcpclient.Client, error) {
 
 func toolSchema(t mcp.Tool) (json.RawMessage, error) {
 	schema := map[string]any{
-		"type":       "object",
-		"properties": t.InputSchema.Properties,
-		"required":   t.InputSchema.Required,
+		"type": "object",
+	}
+	if t.InputSchema.Properties != nil {
+		schema["properties"] = t.InputSchema.Properties
+	} else {
+		schema["properties"] = map[string]any{}
+	}
+	if len(t.InputSchema.Required) > 0 {
+		schema["required"] = t.InputSchema.Required
 	}
 	return json.Marshal(schema)
 }
