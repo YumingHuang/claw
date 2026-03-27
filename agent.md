@@ -26,11 +26,17 @@ claw/
 │   ├── agent/                 # 执行面：Agent 循环、排队
 │   ├── llm/                   # 能力层：Provider 抽象与实现
 │   ├── tools/                 # 能力层：工具接口、注册表、实现
+│   ├── mcp/                   # 能力层：MCP 客户端，连接外部工具服务器
+│   ├── cron/                  # 定时任务调度器，支持推送通知
 │   ├── channels/              # 入口层：HTTP/WebSocket/Feishu 适配器
+│   ├── skills/                # 技能加载器
+│   ├── metrics/               # Prometheus 指标
+│   ├── audit/                 # 审计日志
+│   ├── requestctx/            # 请求上下文工具
 │   └── models/                # 内部数据结构（Message、Error、Request）
 ├── configs/                   # 配置文件示例
+├── skills/                    # 自定义技能目录（可选）
 ├── scripts/                   # 脚本（冒烟测试等）
-├── spec.md / plan.md / task.md
 └── go.mod / go.sum
 ```
 
@@ -96,6 +102,8 @@ claw/
 | `tools.Tool` | `internal/tools` | `Name()`, `Description()`, `Parameters()`, `Execute(ctx, json.RawMessage)` |
 | `gateway.SessionStore` | `internal/gateway` | `Get(id)`, `GetOrCreate(id, channel)`, `Delete(id)`, `List()` |
 | `channels.Channel` | `internal/channels` | `Name()`, `Start(ctx)`, `Stop(ctx)` |
+| `cron.Notifier` | `internal/cron` | `Notify(ctx, target, content)` |
+| `cron.Sender` | `internal/cron` | `SendMarkdown(ctx, chatID, markdown)`, `SendText(ctx, chatID, text)` |
 
 ### 4.2 新增接口规则
 
@@ -114,6 +122,7 @@ claw/
 - 必填字段在 `validate()` 中校验，缺失时返回清晰的错误消息
 - 敏感信息（API Key、Token）仅通过环境变量注入，禁止写死在代码或配置文件中
 - 配置 schema 变更时同步更新 `configs/config.example.yaml`
+- 配置文件按功能分区：`server`、`system_prompt`、`session`、`providers`、`tools`、`mcp`、`cron`、`channels`、`auth`、`rate_limit`
 
 ---
 
@@ -170,11 +179,13 @@ claw/
 | HTTP 路由 | `github.com/go-chi/chi/v5` |
 | WebSocket | `github.com/coder/websocket` |
 | YAML | `gopkg.in/yaml.v3` |
-| 测试 | `github.com/stretchr/testify` |
 | UUID | `github.com/google/uuid` |
 | Feishu | `github.com/larksuite/oapi-sdk-go/v3` |
 | SQLite | `modernc.org/sqlite` |
 | Metrics | `github.com/prometheus/client_golang` |
+| Rate Limit | `golang.org/x/time` |
+| MCP Client | `github.com/mark3labs/mcp-go` |
+| Cron | `github.com/robfig/cron/v3` |
 
 ### 8.2 依赖引入规则
 
@@ -277,6 +288,20 @@ make coverage       # 生成覆盖率报告
 3. 将外部消息转为 `gateway.HandleMessage` / `HandleMessageStream` 调用
 4. 在 `cmd/claw/main.go` 中注册并管理生命周期
 
+### 11.6 添加 MCP 工具服务器时
+
+1. 在 `configs/config.yaml` 的 `mcp.servers` 中添加配置
+2. 支持 `stdio`（本地进程）和 `sse`（远程 HTTP）两种传输方式
+3. MCP 工具会自动注册到 Registry 并加入所有 Profile
+4. 工具 schema 需兼容 OpenAI API（`required` 不能为 null，`properties` 不能为 null）
+
+### 11.7 添加定时任务时
+
+1. 在 `configs/config.yaml` 的 `cron.jobs` 中添加配置
+2. `schedule` 使用标准 5 位 cron 表达式（分 时 日 月 周）
+3. `notify` 格式为 `通道:目标ID`（如 `feishu:<chat_id>`）
+4. 新增通知通道需在 `internal/cron/notifier.go` 实现 `Sender` 接口并在 `main.go` 中注册
+
 ---
 
 ## 12. 关键设计决策（不可违背）
@@ -291,7 +316,10 @@ make coverage       # 生成覆盖率报告
 | Session 按 ID 串行处理 | 避免消息乱序和上下文污染 |
 | Token 估算用简单算法（非 tiktoken） | 第一期简化实现，保持零外部依赖 |
 | 优雅关闭有超时上限 | 防止资源泄漏和进程悬挂 |
+| MCP 工具自动加入所有 Profile | 避免手动维护 MCP 工具名列表 |
+| Cron 通过 Gateway 发消息而非直接调用 Agent | 复用会话管理、排队、Profile 等完整链路 |
+| 飞书回复用 Reply API 而非 Create | 消息挂在用户原消息下，体验更好 |
 
 ---
 
-*规范版本：v0.1 | 与 spec.md v0.2、plan.md v0.2、task.md v0.1 对应*
+*规范版本：v0.2 | 2026-03-27 更新*
