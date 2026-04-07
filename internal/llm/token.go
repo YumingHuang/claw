@@ -11,22 +11,6 @@ const perMessageOverhead = 4 // role, separators, etc.
 // EstimateTokens returns a rough token count for a text string.
 // English: ~4 chars per token. CJK: ~2 tokens per character.
 func EstimateTokens(text string) int {
-	var tokens int
-	for _, r := range text {
-		if unicode.Is(unicode.Han, r) ||
-			unicode.Is(unicode.Hiragana, r) ||
-			unicode.Is(unicode.Katakana, r) ||
-			unicode.Is(unicode.Hangul, r) {
-			tokens += 2
-		} else {
-			// Non-CJK characters contribute ~0.25 tokens each (4 chars ≈ 1 token),
-			// but we accumulate fractional parts via integer math below.
-			tokens++
-		}
-	}
-
-	// For non-CJK characters we counted 1 per char above;
-	// re-walk to split CJK vs ASCII contribution properly.
 	var cjkTokens, asciiChars int
 	for _, r := range text {
 		if unicode.Is(unicode.Han, r) ||
@@ -38,11 +22,7 @@ func EstimateTokens(text string) int {
 			asciiChars++
 		}
 	}
-
-	// ASCII chars: divide by 4, round up
-	asciiTokens := (asciiChars + 3) / 4
-
-	return cjkTokens + asciiTokens
+	return cjkTokens + (asciiChars+3)/4
 }
 
 // EstimateMessagesTokens returns the estimated total token count for a

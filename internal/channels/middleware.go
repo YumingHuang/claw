@@ -16,30 +16,53 @@ import (
 	"golang.org/x/time/rate"
 )
 
+type limiterEntry struct {
+	limiter  *rate.Limiter
+	lastSeen time.Time
+}
+
 type limiterStore struct {
 	mu       sync.Mutex
-	limiters map[string]*rate.Limiter
+	limiters map[string]*limiterEntry
 	limit    rate.Limit
 	burst    int
 }
 
 func newLimiterStore(cfg config.RateLimitConfig) *limiterStore {
-	return &limiterStore{
-		limiters: make(map[string]*rate.Limiter),
+	s := &limiterStore{
+		limiters: make(map[string]*limiterEntry),
 		limit:    rate.Limit(float64(cfg.RequestsPerMinute) / 60.0),
 		burst:    cfg.Burst,
 	}
+	go s.cleanupLoop()
+	return s
 }
 
 func (s *limiterStore) get(key string) *rate.Limiter {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	limiter, ok := s.limiters[key]
+	entry, ok := s.limiters[key]
 	if !ok {
-		limiter = rate.NewLimiter(s.limit, s.burst)
-		s.limiters[key] = limiter
+		entry = &limiterEntry{limiter: rate.NewLimiter(s.limit, s.burst)}
+		s.limiters[key] = entry
 	}
-	return limiter
+	entry.lastSeen = time.Now()
+	return entry.limiter
+}
+
+func (s *limiterStore) cleanupLoop() {
+	ticker := time.NewTicker(10 * time.Minute)
+	defer ticker.Stop()
+	for range ticker.C {
+		s.mu.Lock()
+		cutoff := time.Now().Add(-30 * time.Minute)
+		for key, entry := range s.limiters {
+			if entry.lastSeen.Before(cutoff) {
+				delete(s.limiters, key)
+			}
+		}
+		s.mu.Unlock()
+	}
 }
 
 func AuthMiddleware(cfg config.AuthConfig, auditor *audit.Logger) func(http.Handler) http.Handler {

@@ -52,13 +52,16 @@ func (a *Agent) Run(ctx context.Context, session *Session, userMessage string) (
 	}
 
 	session.Append(models.NewUserMessage(userMessage))
+	startCount := session.MessagesCount()
 
 	for iteration := 0; ; iteration++ {
 		if iteration >= a.maxIterations {
+			session.Rollback(startCount)
 			return "", fmt.Errorf("max tool-call iterations exceeded (%d)", a.maxIterations)
 		}
 
 		if err := ctx.Err(); err != nil {
+			session.Rollback(startCount)
 			return "", fmt.Errorf("context cancelled: %w", err)
 		}
 
@@ -67,6 +70,7 @@ func (a *Agent) Run(ctx context.Context, session *Session, userMessage string) (
 
 		resp, err := a.provider.Chat(ctx, req)
 		if err != nil {
+			session.Rollback(startCount)
 			return "", fmt.Errorf("provider chat: %w", err)
 		}
 
@@ -97,16 +101,19 @@ func (a *Agent) RunStream(ctx context.Context, session *Session, userMessage str
 	}
 
 	session.Append(models.NewUserMessage(userMessage))
+	startCount := session.MessagesCount()
 
 	out := make(chan models.StreamChunk)
 	go func() {
 		defer close(out)
 		for iteration := 0; ; iteration++ {
 			if iteration >= a.maxIterations {
+				session.Rollback(startCount)
 				out <- models.StreamChunk{Err: fmt.Errorf("max tool-call iterations exceeded (%d)", a.maxIterations), Done: true}
 				return
 			}
 			if err := ctx.Err(); err != nil {
+				session.Rollback(startCount)
 				out <- models.StreamChunk{Err: fmt.Errorf("context cancelled: %w", err), Done: true}
 				return
 			}
@@ -116,23 +123,34 @@ func (a *Agent) RunStream(ctx context.Context, session *Session, userMessage str
 
 			llmCh, err := a.provider.ChatStream(ctx, req)
 			if err != nil {
+				session.Rollback(startCount)
 				out <- models.StreamChunk{Err: fmt.Errorf("provider chat stream: %w", err), Done: true}
 				return
 			}
 
 			var fullContent string
 			var toolCalls []models.ToolCall
+			var streamErr error
 			for chunk := range llmCh {
+				if chunk.Err != nil {
+					streamErr = chunk.Err
+					out <- models.StreamChunk{Err: chunk.Err, Done: true}
+					break
+				}
 				fullContent += chunk.Delta
 				toolCalls = append(toolCalls, chunk.ToolCalls...)
-				if chunk.Err != nil || len(chunk.ToolCalls) == 0 {
+				if len(chunk.ToolCalls) == 0 {
 					out <- models.StreamChunk{
 						Delta: chunk.Delta,
 						Done:  chunk.Done && len(toolCalls) == 0,
 						Usage: chunk.Usage,
-						Err:   chunk.Err,
 					}
 				}
+			}
+
+			if streamErr != nil {
+				session.Rollback(startCount)
+				return
 			}
 
 			if len(toolCalls) == 0 {

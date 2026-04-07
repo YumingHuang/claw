@@ -183,6 +183,23 @@ func (p *OpenAIProvider) readSSEStream(ctx context.Context, body io.Reader, ch c
 		data := strings.TrimPrefix(line, "data: ")
 
 		if data == "[DONE]" {
+			// Emit accumulated tool calls once at the end
+			if len(toolCallAccum) > 0 {
+				var tcs []models.ToolCall
+				for i := 0; i < len(toolCallAccum); i++ {
+					tc := toolCallAccum[i]
+					tcs = append(tcs, models.ToolCall{
+						ID:        tc.ID,
+						Name:      tc.Function.Name,
+						Arguments: json.RawMessage(tc.Function.Arguments),
+					})
+				}
+				select {
+				case ch <- StreamChunk{ToolCalls: tcs, Done: true}:
+				case <-ctx.Done():
+					ch <- StreamChunk{Err: ctx.Err()}
+				}
+			}
 			return
 		}
 
@@ -202,6 +219,7 @@ func (p *OpenAIProvider) readSSEStream(ctx context.Context, body io.Reader, ch c
 			delta := chunk.Choices[0].Delta
 			sc.Delta = delta.Content
 
+			// Accumulate tool call deltas without emitting yet
 			for _, tc := range delta.ToolCalls {
 				existing, ok := toolCallAccum[tc.Index]
 				if !ok {
@@ -218,20 +236,17 @@ func (p *OpenAIProvider) readSSEStream(ctx context.Context, body io.Reader, ch c
 					existing.Function.Name = tc.Function.Name
 				}
 				existing.Function.Arguments += tc.Function.Arguments
-
-				sc.ToolCalls = append(sc.ToolCalls, models.ToolCall{
-					ID:        existing.ID,
-					Name:      existing.Function.Name,
-					Arguments: json.RawMessage(existing.Function.Arguments),
-				})
 			}
 		}
 
-		select {
-		case ch <- sc:
-		case <-ctx.Done():
-			ch <- StreamChunk{Err: ctx.Err()}
-			return
+		// Only send text deltas and usage; tool calls are batched at [DONE]
+		if sc.Delta != "" || sc.Usage != nil {
+			select {
+			case ch <- sc:
+			case <-ctx.Done():
+				ch <- StreamChunk{Err: ctx.Err()}
+				return
+			}
 		}
 	}
 

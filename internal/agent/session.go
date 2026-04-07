@@ -63,6 +63,20 @@ func (s *Session) MessagesCount() int {
 	return len(s.messages)
 }
 
+// Rollback truncates the message history back to the given count,
+// discarding messages appended after that point.
+func (s *Session) Rollback(count int) {
+	s.mu.Lock()
+	if count < len(s.messages) {
+		s.messages = s.messages[:count]
+	}
+	callback := s.onUpdate
+	s.mu.Unlock()
+	if callback != nil {
+		callback(s)
+	}
+}
+
 func (s *Session) SetOnUpdate(fn func(*Session)) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
