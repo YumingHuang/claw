@@ -64,6 +64,7 @@ func main() {
 	}
 
 	provider := llm.NewProviderManager(providers, fallbackOrder, cfg.Providers.Retry)
+	provider.SetMetrics(collector)
 
 	// --- Tools ---
 	registry := tools.NewRegistry()

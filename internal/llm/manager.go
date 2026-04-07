@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/YumingHuang/claw/internal/config"
+	"github.com/YumingHuang/claw/internal/metrics"
 	"github.com/YumingHuang/claw/internal/models"
 )
 
@@ -20,6 +21,7 @@ type ProviderManager struct {
 	providers     map[string]Provider
 	fallbackOrder []string
 	retry         config.RetryConfig
+	metrics       *metrics.Collector
 }
 
 // NewProviderManager builds a manager from the given provider map,
@@ -32,11 +34,17 @@ func NewProviderManager(providers map[string]Provider, fallbackOrder []string, r
 	}
 }
 
+// SetMetrics sets the metrics collector for LLM observability.
+func (m *ProviderManager) SetMetrics(collector *metrics.Collector) {
+	m.metrics = collector
+}
+
 func (m *ProviderManager) Name() string { return "manager" }
 
 // Chat tries each provider in fallback order with retry logic.
 func (m *ProviderManager) Chat(ctx context.Context, req *ChatRequest) (*ChatResponse, error) {
 	var lastErr error
+	start := time.Now()
 
 	for _, name := range m.fallbackOrder {
 		p, ok := m.providers[name]
@@ -51,6 +59,11 @@ func (m *ProviderManager) Chat(ctx context.Context, req *ChatRequest) (*ChatResp
 
 			resp, err := p.Chat(ctx, req)
 			if err == nil {
+				dur := time.Since(start)
+				if m.metrics != nil {
+					m.metrics.ObserveLLMRequest(name, req.Model, "success", dur)
+					m.metrics.ObserveLLMTokens(name, req.Model, resp.Usage.PromptTokens, resp.Usage.CompletionTokens)
+				}
 				return resp, nil
 			}
 
@@ -94,6 +107,9 @@ func (m *ProviderManager) Chat(ctx context.Context, req *ChatRequest) (*ChatResp
 	}
 
 	if lastErr != nil {
+		if m.metrics != nil {
+			m.metrics.ObserveLLMRequest("", req.Model, "error", time.Since(start))
+		}
 		return nil, fmt.Errorf("all providers failed: %w", lastErr)
 	}
 	return nil, models.NewAPIError(models.ErrProviderError, "no providers available")
@@ -102,6 +118,7 @@ func (m *ProviderManager) Chat(ctx context.Context, req *ChatRequest) (*ChatResp
 // ChatStream tries each provider in fallback order with retry logic for streaming.
 func (m *ProviderManager) ChatStream(ctx context.Context, req *ChatRequest) (<-chan StreamChunk, error) {
 	var lastErr error
+	start := time.Now()
 
 	for _, name := range m.fallbackOrder {
 		p, ok := m.providers[name]
@@ -116,6 +133,9 @@ func (m *ProviderManager) ChatStream(ctx context.Context, req *ChatRequest) (<-c
 
 			ch, err := p.ChatStream(ctx, req)
 			if err == nil {
+				if m.metrics != nil {
+					m.metrics.ObserveLLMRequest(name, req.Model, "success", time.Since(start))
+				}
 				return ch, nil
 			}
 
@@ -158,6 +178,9 @@ func (m *ProviderManager) ChatStream(ctx context.Context, req *ChatRequest) (<-c
 	}
 
 	if lastErr != nil {
+		if m.metrics != nil {
+			m.metrics.ObserveLLMRequest("", req.Model, "error", time.Since(start))
+		}
 		return nil, fmt.Errorf("all providers failed: %w", lastErr)
 	}
 	return nil, models.NewAPIError(models.ErrProviderError, "no providers available")

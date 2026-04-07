@@ -72,6 +72,7 @@ func (g *Gateway) HandleMessage(ctx context.Context, sessionID, channel, message
 
 	if g.metrics != nil {
 		g.metrics.ObserveGatewayRequest(channel, false, "success", latency)
+		g.metrics.SetActiveSessions(g.sessions.Count())
 	}
 	slog.Info("handle message",
 		"request_id", requestID, "session_id", sessionID, "latency", latency)

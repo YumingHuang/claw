@@ -19,6 +19,11 @@ type Collector struct {
 	gatewayRequestDuration *prometheus.HistogramVec
 	toolExecutionsTotal    *prometheus.CounterVec
 	ready                  prometheus.Gauge
+
+	llmRequestsTotal   *prometheus.CounterVec
+	llmRequestDuration *prometheus.HistogramVec
+	llmTokensTotal     *prometheus.CounterVec
+	activeSessions     prometheus.Gauge
 }
 
 // New creates a collector with an isolated registry.
@@ -80,6 +85,42 @@ func New() *Collector {
 				Help:      "Whether the service is ready to serve requests.",
 			},
 		),
+		llmRequestsTotal: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Namespace: "claw",
+				Subsystem: "llm",
+				Name:      "requests_total",
+				Help:      "Total LLM requests by provider, model, and status.",
+			},
+			[]string{"provider", "model", "status"},
+		),
+		llmRequestDuration: prometheus.NewHistogramVec(
+			prometheus.HistogramOpts{
+				Namespace: "claw",
+				Subsystem: "llm",
+				Name:      "request_duration_seconds",
+				Help:      "LLM request latency by provider and model.",
+				Buckets:   []float64{0.5, 1, 2, 5, 10, 30, 60, 120},
+			},
+			[]string{"provider", "model"},
+		),
+		llmTokensTotal: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Namespace: "claw",
+				Subsystem: "llm",
+				Name:      "tokens_total",
+				Help:      "Total tokens consumed by provider, model, and type (prompt/completion).",
+			},
+			[]string{"provider", "model", "type"},
+		),
+		activeSessions: prometheus.NewGauge(
+			prometheus.GaugeOpts{
+				Namespace: "claw",
+				Subsystem: "app",
+				Name:      "active_sessions",
+				Help:      "Number of active sessions.",
+			},
+		),
 	}
 
 	c.registry.MustRegister(
@@ -89,6 +130,10 @@ func New() *Collector {
 		c.gatewayRequestDuration,
 		c.toolExecutionsTotal,
 		c.ready,
+		c.llmRequestsTotal,
+		c.llmRequestDuration,
+		c.llmTokensTotal,
+		c.activeSessions,
 	)
 
 	return c
@@ -155,4 +200,46 @@ func (c *Collector) ObserveToolExecution(toolName, status string) {
 		status = "unknown"
 	}
 	c.toolExecutionsTotal.WithLabelValues(toolName, status).Inc()
+}
+
+// ObserveLLMRequest records a completed LLM provider call.
+func (c *Collector) ObserveLLMRequest(provider, model, status string, duration time.Duration) {
+	if c == nil {
+		return
+	}
+	if provider == "" {
+		provider = "unknown"
+	}
+	if model == "" {
+		model = "unknown"
+	}
+	c.llmRequestsTotal.WithLabelValues(provider, model, status).Inc()
+	c.llmRequestDuration.WithLabelValues(provider, model).Observe(duration.Seconds())
+}
+
+// ObserveLLMTokens records token usage from an LLM call.
+func (c *Collector) ObserveLLMTokens(provider, model string, promptTokens, completionTokens int) {
+	if c == nil {
+		return
+	}
+	if provider == "" {
+		provider = "unknown"
+	}
+	if model == "" {
+		model = "unknown"
+	}
+	if promptTokens > 0 {
+		c.llmTokensTotal.WithLabelValues(provider, model, "prompt").Add(float64(promptTokens))
+	}
+	if completionTokens > 0 {
+		c.llmTokensTotal.WithLabelValues(provider, model, "completion").Add(float64(completionTokens))
+	}
+}
+
+// SetActiveSessions updates the active session gauge.
+func (c *Collector) SetActiveSessions(count int) {
+	if c == nil {
+		return
+	}
+	c.activeSessions.Set(float64(count))
 }
