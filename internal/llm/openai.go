@@ -261,8 +261,26 @@ func toOpenAIMessages(msgs []models.Message) []map[string]interface{} {
 	out := make([]map[string]interface{}, 0, len(msgs))
 	for _, m := range msgs {
 		msg := map[string]interface{}{
-			"role":    m.Role,
-			"content": m.Content,
+			"role": m.Role,
+		}
+
+		// Build content: use array format when images are present.
+		if m.Role == "user" && len(m.Images) > 0 {
+			parts := []map[string]interface{}{}
+			if m.Content != "" {
+				parts = append(parts, map[string]interface{}{"type": "text", "text": m.Content})
+			}
+			for _, img := range m.Images {
+				parts = append(parts, map[string]interface{}{
+					"type": "image_url",
+					"image_url": map[string]interface{}{
+						"url": "data:" + img.MediaType + ";base64," + img.Data,
+					},
+				})
+			}
+			msg["content"] = parts
+		} else {
+			msg["content"] = m.Content
 		}
 
 		if len(m.ToolCalls) > 0 {

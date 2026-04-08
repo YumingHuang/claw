@@ -38,7 +38,7 @@ func (g *Gateway) SetMetrics(collector *metrics.Collector) {
 }
 
 // HandleMessage processes a non-streaming chat request.
-func (g *Gateway) HandleMessage(ctx context.Context, sessionID, channel, message string) (*models.ChatResponse, error) {
+func (g *Gateway) HandleMessage(ctx context.Context, sessionID, channel, message string, images ...models.Image) (*models.ChatResponse, error) {
 	requestID := uuid.New().String()
 	ctx = context.WithValue(ctx, ContextKeyRequestID, requestID)
 	ctx = context.WithValue(ctx, ContextKeySessionID, sessionID)
@@ -52,7 +52,7 @@ func (g *Gateway) HandleMessage(ctx context.Context, sessionID, channel, message
 	g.queue.Acquire(sessionID)
 	defer g.queue.Release(sessionID)
 
-	result, err := g.agent.Run(ctx, session, message)
+	result, err := g.agent.Run(ctx, session, message, images...)
 	latency := time.Since(start)
 
 	if err != nil {
@@ -81,7 +81,7 @@ func (g *Gateway) HandleMessage(ctx context.Context, sessionID, channel, message
 }
 
 // HandleMessageStream processes a streaming chat request.
-func (g *Gateway) HandleMessageStream(ctx context.Context, sessionID, channel, message string) (<-chan models.StreamChunk, error) {
+func (g *Gateway) HandleMessageStream(ctx context.Context, sessionID, channel, message string, images ...models.Image) (<-chan models.StreamChunk, error) {
 	requestID := uuid.New().String()
 	ctx = context.WithValue(ctx, ContextKeyRequestID, requestID)
 	ctx = context.WithValue(ctx, ContextKeySessionID, sessionID)
@@ -94,7 +94,7 @@ func (g *Gateway) HandleMessageStream(ctx context.Context, sessionID, channel, m
 
 	g.queue.Acquire(sessionID)
 
-	ch, err := g.agent.RunStream(ctx, session, message)
+	ch, err := g.agent.RunStream(ctx, session, message, images...)
 	if err != nil {
 		g.queue.Release(sessionID)
 		if g.metrics != nil {

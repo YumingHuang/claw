@@ -80,8 +80,9 @@ header h1 span { color: var(--accent); }
   flex-shrink: 0; padding: 12px 0 16px; border-top: 1px solid var(--border);
   display: flex; gap: 10px; align-items: flex-end;
 }
+#input-wrap { flex: 1; display: flex; flex-direction: column; gap: 6px; }
 #input {
-  flex: 1; background: var(--surface); border: 1px solid var(--border);
+  width: 100%; background: var(--surface); border: 1px solid var(--border);
   border-radius: var(--radius); padding: 12px 16px; color: var(--text);
   font-family: var(--font); font-size: 15px; resize: none;
   min-height: 48px; max-height: 200px; line-height: 1.5; outline: none;
@@ -89,6 +90,28 @@ header h1 span { color: var(--accent); }
 }
 #input:focus { border-color: var(--accent); }
 #input::placeholder { color: var(--text2); }
+#attach {
+  width: 40px; height: 40px; border-radius: 50%; border: none;
+  background: var(--surface2); color: var(--text2); cursor: pointer; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center; transition: color 0.2s;
+}
+#attach:hover { color: var(--accent); }
+#attach svg { width: 18px; height: 18px; }
+#previews {
+  display: flex; gap: 6px; flex-wrap: wrap;
+}
+#previews:empty { display: none; }
+.preview {
+  position: relative; width: 64px; height: 64px; border-radius: 8px; overflow: hidden;
+  border: 1px solid var(--border);
+}
+.preview img { width: 100%; height: 100%; object-fit: cover; }
+.preview .remove {
+  position: absolute; top: 2px; right: 2px; width: 18px; height: 18px;
+  background: rgba(0,0,0,0.7); color: #fff; border: none; border-radius: 50%;
+  font-size: 12px; cursor: pointer; display: flex; align-items: center; justify-content: center;
+  line-height: 1;
+}
 #send {
   width: 48px; height: 48px; border-radius: 50%; border: none;
   background: var(--accent); color: #fff; cursor: pointer; flex-shrink: 0;
@@ -104,6 +127,8 @@ header h1 span { color: var(--accent); }
   flex: 1; display: flex; align-items: center; justify-content: center;
   color: var(--text2); font-size: 14px; text-align: center; line-height: 1.8;
 }
+.msg-images { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 6px; }
+.msg-images img { max-width: 200px; max-height: 160px; border-radius: 8px; object-fit: cover; }
 </style>
 </head>
 <body>
@@ -116,7 +141,14 @@ header h1 span { color: var(--accent); }
     <div class="empty">发送消息开始对话</div>
   </div>
   <div id="input-area">
-    <textarea id="input" rows="1" placeholder="输入消息… (Enter 发送, Shift+Enter 换行)" autofocus></textarea>
+    <input type="file" id="file-input" accept="image/*" multiple hidden>
+    <button id="attach" title="添加图片" aria-label="添加图片">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+    </button>
+    <div id="input-wrap">
+      <div id="previews"></div>
+      <textarea id="input" rows="1" placeholder="输入消息… (Enter 发送, Shift+Enter 换行)" autofocus></textarea>
+    </div>
     <button id="send" title="发送">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
     </button>
@@ -129,12 +161,16 @@ const messagesEl = $('#messages');
 const inputEl = $('#input');
 const sendBtn = $('#send');
 const statusEl = $('#status');
+const attachBtn = $('#attach');
+const fileInput = $('#file-input');
+const previewsEl = $('#previews');
 
 let ws = null;
 let sessionID = localStorage.getItem('claw_session') || '';
 let currentAssistantEl = null;
 let currentContent = '';
 let sending = false;
+let pendingImages = []; // [{data, mediaType}]
 
 function connect() {
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -202,24 +238,40 @@ function connect() {
 
 function send() {
   const text = inputEl.value.trim();
-  if (!text || !ws || ws.readyState !== 1 || sending) return;
+  if ((!text && pendingImages.length === 0) || !ws || ws.readyState !== 1 || sending) return;
 
   // Clear empty state
   const empty = messagesEl.querySelector('.empty');
   if (empty) empty.remove();
 
-  addMessage('user', text);
-  ws.send(JSON.stringify({ type: 'message', content: text }));
+  addMessage('user', text, pendingImages);
+  const payload = { type: 'message', content: text };
+  if (pendingImages.length > 0) {
+    payload.images = pendingImages.map(img => ({ data: img.data, media_type: img.mediaType }));
+  }
+  ws.send(JSON.stringify(payload));
   inputEl.value = '';
   inputEl.style.height = 'auto';
+  pendingImages = [];
+  previewsEl.innerHTML = '';
   sending = true;
   updateSendBtn();
 }
 
-function addMessage(role, content) {
+function addMessage(role, content, images) {
   const div = document.createElement('div');
   div.className = `msg ${role}`;
-  div.innerHTML = `<div class="bubble">${escapeHtml(content)}</div>`;
+  let html = '<div class="bubble">';
+  if (images && images.length > 0) {
+    html += '<div class="msg-images">';
+    for (const img of images) {
+      html += `<img src="data:${img.mediaType};base64,${img.data}" alt="image">`;
+    }
+    html += '</div>';
+  }
+  if (content) html += escapeHtml(content);
+  html += '</div>';
+  div.innerHTML = html;
   messagesEl.appendChild(div);
   scrollBottom();
 }
@@ -331,6 +383,56 @@ inputEl.addEventListener('keydown', (e) => {
 });
 
 sendBtn.addEventListener('click', send);
+
+// Image upload
+attachBtn.addEventListener('click', () => fileInput.click());
+fileInput.addEventListener('change', () => {
+  for (const file of fileInput.files) {
+    if (!file.type.startsWith('image/')) continue;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const base64 = reader.result.split(',')[1];
+      pendingImages.push({ data: base64, mediaType: file.type });
+      const wrap = document.createElement('div');
+      wrap.className = 'preview';
+      const idx = pendingImages.length - 1;
+      wrap.innerHTML = `<img src="${reader.result}"><button class="remove" data-idx="${idx}">&times;</button>`;
+      previewsEl.appendChild(wrap);
+    };
+    reader.readAsDataURL(file);
+  }
+  fileInput.value = '';
+});
+previewsEl.addEventListener('click', (e) => {
+  const btn = e.target.closest('.remove');
+  if (!btn) return;
+  const idx = parseInt(btn.dataset.idx);
+  btn.closest('.preview').remove();
+  pendingImages[idx] = null;
+  pendingImages = pendingImages.filter(Boolean);
+  // Re-index remaining buttons
+  previewsEl.querySelectorAll('.remove').forEach((b, i) => b.dataset.idx = i);
+});
+
+// Paste image from clipboard
+inputEl.addEventListener('paste', (e) => {
+  for (const item of e.clipboardData.items) {
+    if (!item.type.startsWith('image/')) continue;
+    e.preventDefault();
+    const file = item.getAsFile();
+    const reader = new FileReader();
+    reader.onload = () => {
+      const base64 = reader.result.split(',')[1];
+      pendingImages.push({ data: base64, mediaType: file.type });
+      const wrap = document.createElement('div');
+      wrap.className = 'preview';
+      const idx = pendingImages.length - 1;
+      wrap.innerHTML = `<img src="${reader.result}"><button class="remove" data-idx="${idx}">&times;</button>`;
+      previewsEl.appendChild(wrap);
+    };
+    reader.readAsDataURL(file);
+  }
+});
 
 // Keepalive ping
 setInterval(() => {

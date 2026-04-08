@@ -18,8 +18,9 @@ import (
 
 // WebSocket message types exchanged between client and server.
 type wsIncoming struct {
-	Type    string `json:"type"`    // "message" | "ping"
-	Content string `json:"content"` // for "message" type
+	Type    string         `json:"type"`    // "message" | "ping"
+	Content string         `json:"content"` // for "message" type
+	Images  []models.Image `json:"images,omitempty"`
 }
 
 type wsOutgoing struct {
@@ -154,7 +155,7 @@ func (ws *WebSocketChannel) serveConn(ctx context.Context, conn *websocket.Conn,
 			}
 
 		case "message":
-			if msg.Content == "" {
+			if msg.Content == "" && len(msg.Images) == 0 {
 				_ = sendJSON(wsOutgoing{
 					Type:    "error",
 					Code:    "invalid_request",
@@ -162,7 +163,7 @@ func (ws *WebSocketChannel) serveConn(ctx context.Context, conn *websocket.Conn,
 				})
 				continue
 			}
-			ws.handleMessage(ctx, conn, sessionID, msg.Content, sendJSON)
+			ws.handleMessage(ctx, conn, sessionID, msg.Content, msg.Images, sendJSON)
 
 		default:
 			_ = sendJSON(wsOutgoing{
@@ -178,12 +179,13 @@ func (ws *WebSocketChannel) handleMessage(
 	ctx context.Context,
 	_ *websocket.Conn,
 	sessionID, content string,
+	images []models.Image,
 	sendJSON func(wsOutgoing) error,
 ) {
 	// Notify client we're processing
 	_ = sendJSON(wsOutgoing{Type: "status", Status: "thinking", SessionID: sessionID})
 
-	ch, err := ws.gateway.HandleMessageStream(ctx, sessionID, "websocket", content)
+	ch, err := ws.gateway.HandleMessageStream(ctx, sessionID, "websocket", content, images...)
 	if err != nil {
 		_ = sendJSON(wsOutgoing{
 			Type:    "error",

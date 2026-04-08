@@ -311,10 +311,25 @@ func toAnthropicMessages(msgs []models.Message) ([]map[string]interface{}, strin
 			systemPrompt += m.Content
 
 		case "user":
-			out = append(out, map[string]interface{}{
-				"role":    "user",
-				"content": m.Content,
-			})
+			if len(m.Images) > 0 {
+				parts := []map[string]interface{}{}
+				if m.Content != "" {
+					parts = append(parts, map[string]interface{}{"type": "text", "text": m.Content})
+				}
+				for _, img := range m.Images {
+					parts = append(parts, map[string]interface{}{
+						"type": "image",
+						"source": map[string]interface{}{
+							"type":       "base64",
+							"media_type": img.MediaType,
+							"data":       img.Data,
+						},
+					})
+				}
+				out = append(out, map[string]interface{}{"role": "user", "content": parts})
+			} else {
+				out = append(out, map[string]interface{}{"role": "user", "content": m.Content})
+			}
 
 		case "assistant":
 			msg := map[string]interface{}{

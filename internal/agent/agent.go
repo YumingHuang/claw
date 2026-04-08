@@ -46,12 +46,16 @@ func NewAgent(provider llm.Provider, registry *tools.Registry, opts AgentOptions
 // Run executes the agents loop: send user message, call LLM, execute tools if
 // requested, and repeat until the LLM returns a text response or the iteration
 // limit is reached.
-func (a *Agent) Run(ctx context.Context, session *Session, userMessage string) (string, error) {
+func (a *Agent) Run(ctx context.Context, session *Session, userMessage string, images ...models.Image) (string, error) {
 	if err := ctx.Err(); err != nil {
 		return "", fmt.Errorf("context cancelled: %w", err)
 	}
 
-	session.Append(models.NewUserMessage(userMessage))
+	if len(images) > 0 {
+		session.Append(models.NewUserMessageWithImages(userMessage, images))
+	} else {
+		session.Append(models.NewUserMessage(userMessage))
+	}
 	startCount := session.MessagesCount()
 
 	for iteration := 0; ; iteration++ {
@@ -95,12 +99,16 @@ func (a *Agent) Run(ctx context.Context, session *Session, userMessage string) (
 // RunStream executes the agents loop with streaming LLM responses.
 // It supports tool-call loops: when the LLM requests tool calls, tools are
 // executed and the LLM is called again until a text response is produced.
-func (a *Agent) RunStream(ctx context.Context, session *Session, userMessage string) (<-chan models.StreamChunk, error) {
+func (a *Agent) RunStream(ctx context.Context, session *Session, userMessage string, images ...models.Image) (<-chan models.StreamChunk, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, fmt.Errorf("context cancelled: %w", err)
 	}
 
-	session.Append(models.NewUserMessage(userMessage))
+	if len(images) > 0 {
+		session.Append(models.NewUserMessageWithImages(userMessage, images))
+	} else {
+		session.Append(models.NewUserMessage(userMessage))
+	}
 	startCount := session.MessagesCount()
 
 	out := make(chan models.StreamChunk)

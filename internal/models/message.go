@@ -9,9 +9,16 @@ import (
 type Message struct {
 	Role       string     `json:"role"`
 	Content    string     `json:"content"`
+	Images     []Image    `json:"images,omitempty"`
 	ToolCalls  []ToolCall `json:"tool_calls,omitempty"`
 	ToolCallID string     `json:"tool_call_id,omitempty"`
 	Timestamp  time.Time  `json:"timestamp"`
+}
+
+// Image holds a base64-encoded image attached to a message.
+type Image struct {
+	Data      string `json:"data"`       // base64-encoded image data
+	MediaType string `json:"media_type"` // e.g. "image/png", "image/jpeg"
 }
 
 // ToolCall represents an LLM's request to invoke a tool.
@@ -36,6 +43,11 @@ type Usage struct {
 
 func NewUserMessage(content string) Message {
 	return Message{Role: "user", Content: content, Timestamp: time.Now()}
+}
+
+// NewUserMessageWithImages creates a user message with text and images.
+func NewUserMessageWithImages(content string, images []Image) Message {
+	return Message{Role: "user", Content: content, Images: images, Timestamp: time.Now()}
 }
 
 func NewAssistantMessage(content string) Message {
