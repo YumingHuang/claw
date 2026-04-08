@@ -120,7 +120,6 @@ func main() {
 
 	// --- MCP tools ---
 	mcpManager := mcp.LoadTools(ctx, cfg.MCP)
-	defer mcpManager.Close()
 	mcpTools := mcpManager.Tools()
 	for _, mcpTool := range mcpTools {
 		if err := registry.Register(mcpTool); err != nil {
@@ -228,6 +227,7 @@ func main() {
 		}
 	}
 
+	mcpManager.Close()
 	slog.Info("claw stopped")
 }
 

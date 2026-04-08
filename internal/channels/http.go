@@ -14,6 +14,7 @@ import (
 	"github.com/YumingHuang/claw/internal/gateway"
 	"github.com/YumingHuang/claw/internal/metrics"
 	"github.com/YumingHuang/claw/internal/models"
+	"github.com/YumingHuang/claw/internal/web"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 )
@@ -78,6 +79,9 @@ func (h *HTTPChannel) buildRouter() chi.Router {
 	if h.metrics != nil {
 		r.Handle("/metrics", h.metrics.Handler())
 	}
+	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFileFS(w, r, web.Content(), "index.html")
+	})
 	return r
 }
 

@@ -8,9 +8,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"os/exec"
 	"strings"
+	"syscall"
 
 	mcpclient "github.com/mark3labs/mcp-go/client"
+	"github.com/mark3labs/mcp-go/client/transport"
 	"github.com/mark3labs/mcp-go/mcp"
 
 	"github.com/YumingHuang/claw/internal/config"
@@ -159,7 +162,19 @@ func newClient(cfg config.MCPServerConfig) (*mcpclient.Client, error) {
 		for k, v := range cfg.Env {
 			env = append(env, k+"="+v)
 		}
-		return mcpclient.NewStdioMCPClient(cfg.Command, env, cfg.Args...)
+		// Put child processes in their own process group so that
+		// exec.CommandContext can kill the entire tree on context cancel.
+		cmdFunc := transport.WithCommandFunc(
+			func(ctx context.Context, command string, cmdEnv []string, args []string) (*exec.Cmd, error) {
+				cmd := exec.CommandContext(ctx, command, args...)
+				cmd.Env = cmdEnv
+				cmd.SysProcAttr = &syscall.SysProcAttr{
+					Setpgid: true,
+				}
+				return cmd, nil
+			},
+		)
+		return mcpclient.NewStdioMCPClientWithOptions(cfg.Command, env, cfg.Args, cmdFunc)
 	case "sse":
 		return mcpclient.NewSSEMCPClient(cfg.URL)
 	default:
