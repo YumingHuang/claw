@@ -75,35 +75,64 @@ type Tool interface {
 	Execute(ctx context.Context, params json.RawMessage) (models.ToolResult, error)
 }
 
-// LoadTools connects to all configured MCP servers and returns their tools.
+// Manager holds MCP clients and their tools, providing lifecycle management.
+type Manager struct {
+	clients []*mcpclient.Client
+	tools   []Tool
+}
+
+// LoadTools connects to all configured MCP servers and returns a Manager.
 // Errors connecting to individual servers are logged but not fatal.
-func LoadTools(ctx context.Context, cfg config.MCPConfig) []Tool {
-	var tools []Tool
+func LoadTools(ctx context.Context, cfg config.MCPConfig) *Manager {
+	m := &Manager{}
 	for _, srv := range cfg.Servers {
-		t, err := loadServerTools(ctx, srv)
+		tools, client, err := loadServerTools(ctx, srv)
 		if err != nil {
 			slog.Error("mcp: failed to connect to server", "name", srv.Name, "error", err)
 			continue
 		}
-		slog.Info("mcp: loaded tools from server", "name", srv.Name, "count", len(t))
-		tools = append(tools, t...)
+		slog.Info("mcp: loaded tools from server", "name", srv.Name, "count", len(tools))
+		m.clients = append(m.clients, client)
+		m.tools = append(m.tools, tools...)
 	}
-	return tools
+	return m
 }
 
-func loadServerTools(ctx context.Context, cfg config.MCPServerConfig) ([]Tool, error) {
+// Tools returns all loaded MCP tools.
+func (m *Manager) Tools() []Tool {
+	if m == nil {
+		return nil
+	}
+	return m.tools
+}
+
+// Close shuts down all MCP client connections.
+func (m *Manager) Close() {
+	if m == nil {
+		return
+	}
+	for _, c := range m.clients {
+		if err := c.Close(); err != nil {
+			slog.Debug("mcp: close client", "error", err)
+		}
+	}
+}
+
+func loadServerTools(ctx context.Context, cfg config.MCPServerConfig) ([]Tool, *mcpclient.Client, error) {
 	c, err := newClient(cfg)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	if _, err := c.Initialize(ctx, mcp.InitializeRequest{}); err != nil {
-		return nil, fmt.Errorf("initialize: %w", err)
+		_ = c.Close()
+		return nil, nil, fmt.Errorf("initialize: %w", err)
 	}
 
 	result, err := c.ListTools(ctx, mcp.ListToolsRequest{})
 	if err != nil {
-		return nil, fmt.Errorf("list tools: %w", err)
+		_ = c.Close()
+		return nil, nil, fmt.Errorf("list tools: %w", err)
 	}
 
 	tools := make([]Tool, 0, len(result.Tools))
@@ -120,7 +149,7 @@ func loadServerTools(ctx context.Context, cfg config.MCPServerConfig) ([]Tool, e
 			client:      c,
 		})
 	}
-	return tools, nil
+	return tools, c, nil
 }
 
 func newClient(cfg config.MCPServerConfig) (*mcpclient.Client, error) {

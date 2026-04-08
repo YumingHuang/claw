@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"os/exec"
+	"regexp"
+	"strings"
 	"time"
 
 	"github.com/YumingHuang/claw/internal/audit"
@@ -13,18 +15,39 @@ import (
 
 // RunCommandTool executes whitelisted system commands.
 type RunCommandTool struct {
-	allowed        map[string]bool
-	maxOutputChars int
-	timeout        time.Duration
-	auditor        *audit.Logger
+	allowed           map[string]bool
+	deniedArgPatterns []*regexp.Regexp
+	maxOutputChars    int
+	timeout           time.Duration
+	auditor           *audit.Logger
 }
 
-func NewRunCommandTool(allowedCommands []string, maxOutputChars int, timeout time.Duration, auditor *audit.Logger) *RunCommandTool {
+func NewRunCommandTool(allowedCommands []string, deniedArgPatterns []string, maxOutputChars int, timeout time.Duration, auditor *audit.Logger) *RunCommandTool {
 	allowed := make(map[string]bool, len(allowedCommands))
 	for _, c := range allowedCommands {
 		allowed[c] = true
 	}
-	return &RunCommandTool{allowed: allowed, maxOutputChars: maxOutputChars, timeout: timeout, auditor: auditor}
+	patterns := make([]*regexp.Regexp, 0, len(deniedArgPatterns))
+	for _, p := range deniedArgPatterns {
+		if re, err := regexp.Compile(p); err == nil {
+			patterns = append(patterns, re)
+		}
+	}
+	// Built-in safety patterns: block metadata endpoints and sensitive paths.
+	if len(patterns) == 0 {
+		patterns = append(patterns,
+			regexp.MustCompile(`169\.254\.169\.254`),
+			regexp.MustCompile(`(?i)metadata\.google`),
+			regexp.MustCompile(`(?i)/etc/(passwd|shadow)`),
+		)
+	}
+	return &RunCommandTool{
+		allowed:           allowed,
+		deniedArgPatterns: patterns,
+		maxOutputChars:    maxOutputChars,
+		timeout:           timeout,
+		auditor:           auditor,
+	}
 }
 
 func (t *RunCommandTool) Name() string        { return "run_command" }
@@ -44,6 +67,14 @@ func (t *RunCommandTool) Execute(ctx context.Context, params json.RawMessage) (m
 
 	if !t.allowed[p.Command] {
 		return models.ToolResult{Content: fmt.Sprintf("command not allowed: %s", p.Command), IsError: true}, nil
+	}
+
+	// Check args against denied patterns.
+	fullArgs := strings.Join(p.Args, " ")
+	for _, re := range t.deniedArgPatterns {
+		if re.MatchString(fullArgs) {
+			return models.ToolResult{Content: fmt.Sprintf("argument blocked by security policy: %s", re.String()), IsError: true}, nil
+		}
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, t.timeout)

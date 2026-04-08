@@ -4,6 +4,7 @@ package cron
 import (
 	"context"
 	"log/slog"
+	"time"
 
 	"github.com/robfig/cron/v3"
 
@@ -37,7 +38,13 @@ func New(gw *gateway.Gateway, jobs []config.CronJobConfig, notifier Notifier) (*
 
 		_, err := c.AddFunc(j.Schedule, func() {
 			slog.Info("cron: executing job", "name", j.Name)
-			resp, err := gw.HandleMessage(context.Background(), sessionID, channel, j.Message)
+			timeout := j.Timeout
+			if timeout <= 0 {
+				timeout = 5 * time.Minute
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), timeout)
+			defer cancel()
+			resp, err := gw.HandleMessage(ctx, sessionID, channel, j.Message)
 			if err != nil {
 				slog.Error("cron: job failed", "name", j.Name, "error", err)
 				return
@@ -45,7 +52,7 @@ func New(gw *gateway.Gateway, jobs []config.CronJobConfig, notifier Notifier) (*
 			slog.Info("cron: job completed", "name", j.Name, "response_length", len(resp.Message.Content))
 
 			if j.Notify != "" && notifier != nil {
-				if err := notifier.Notify(context.Background(), j.Notify, resp.Message.Content); err != nil {
+				if err := notifier.Notify(ctx, j.Notify, resp.Message.Content); err != nil {
 					slog.Error("cron: notify failed", "name", j.Name, "target", j.Notify, "error", err)
 				}
 			}

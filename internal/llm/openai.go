@@ -142,7 +142,7 @@ func (p *OpenAIProvider) doRequest(ctx context.Context, body map[string]interfac
 }
 
 func (p *OpenAIProvider) handleErrorResponse(resp *http.Response) error {
-	bodyBytes, _ := io.ReadAll(resp.Body)
+	bodyBytes, _ := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
 
 	var oaiErr struct {
 		Error struct {

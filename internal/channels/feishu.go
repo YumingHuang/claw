@@ -324,7 +324,7 @@ func (f *FeishuChannel) handleWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	body, err := io.ReadAll(r.Body)
+	body, err := io.ReadAll(io.LimitReader(r.Body, 1<<20)) // 1MB max
 	defer r.Body.Close()
 	if err != nil {
 		slog.Error("feishu: read body", "error", err)
@@ -435,6 +435,12 @@ func (f *FeishuChannel) handleIncomingMessage(eventID, chatID, messageID, messag
 	}
 
 	ctx := context.Background()
+	requestTimeout := f.config.RequestTimeout
+	if requestTimeout <= 0 {
+		requestTimeout = 3 * time.Minute
+	}
+	ctx, cancel := context.WithTimeout(ctx, requestTimeout)
+	defer cancel()
 
 	// Add a thinking emoji reaction to the user's message.
 	emojiType := f.config.ThinkingEmoji

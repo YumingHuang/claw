@@ -92,8 +92,21 @@ func (s *SQLiteSessionStore) GetOrCreate(id string, channel string) *agent.Sessi
 			slog.Error("sqlite session save", "id", sess.ID, "error", err)
 		}
 	})
-	if err := s.saveSession(session); err != nil {
+
+	// Use INSERT OR IGNORE for atomicity — if another goroutine inserted
+	// between our Get and here, the INSERT is a no-op and we re-read.
+	payload, _ := json.Marshal(session.Messages())
+	_, err := s.db.Exec(`
+		INSERT OR IGNORE INTO sessions (id, channel, messages, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?)
+	`, id, channel, string(payload), session.CreatedAt(), session.UpdatedAt())
+	if err != nil {
 		slog.Error("sqlite session create", "id", id, "error", err)
+	}
+
+	// Re-read to get the authoritative version (ours or the concurrent one).
+	if existing, ok := s.Get(id); ok {
+		return existing
 	}
 	return session
 }
@@ -158,7 +171,7 @@ func (s *SQLiteSessionStore) saveSession(session *agent.Session) error {
 			messages = excluded.messages,
 			created_at = excluded.created_at,
 			updated_at = excluded.updated_at
-	`, session.ID, session.Channel, string(payload), session.CreatedAt, session.UpdatedAt)
+	`, session.ID, session.Channel, string(payload), session.CreatedAt(), session.UpdatedAt())
 	if err != nil {
 		return fmt.Errorf("upsert session: %w", err)
 	}
@@ -189,8 +202,7 @@ func hydrateSession(id, channel, raw string, createdAt, updatedAt time.Time, sto
 	for _, msg := range messages {
 		session.Append(msg)
 	}
-	session.CreatedAt = createdAt
-	session.UpdatedAt = updatedAt
+	session.SetTimestamps(createdAt, updatedAt)
 	session.SetOnUpdate(func(sess *agent.Session) {
 		if err := store.saveSession(sess); err != nil {
 			slog.Error("sqlite session save", "id", sess.ID, "error", err)

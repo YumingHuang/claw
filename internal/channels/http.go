@@ -103,6 +103,7 @@ func (h *HTTPChannel) Stop(ctx context.Context) error {
 // --- Handlers ---
 
 func (h *HTTPChannel) handleChat(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20) // 1MB max
 	var req models.ChatRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, models.NewAPIError(models.ErrInvalidRequest, fmt.Sprintf("invalid JSON: %v", err)))
@@ -179,7 +180,7 @@ func (h *HTTPChannel) handleGetSession(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"session_id":    session.ID,
 		"messages":      session.Messages(),
-		"created_at":    session.CreatedAt,
+		"created_at":    session.CreatedAt(),
 		"message_count": session.MessagesCount(),
 	})
 }

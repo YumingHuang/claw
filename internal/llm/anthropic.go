@@ -139,7 +139,7 @@ func (p *AnthropicProvider) doRequest(ctx context.Context, body map[string]inter
 }
 
 func (p *AnthropicProvider) handleErrorResponse(resp *http.Response) error {
-	bodyBytes, _ := io.ReadAll(resp.Body)
+	bodyBytes, _ := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
 
 	var anthErr struct {
 		Error struct {

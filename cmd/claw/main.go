@@ -85,7 +85,7 @@ func main() {
 		}
 	}
 	if len(cfg.Tools.AllowedCommands) > 0 {
-		if err := registry.Register(tools.NewRunCommandTool(cfg.Tools.AllowedCommands, cfg.Tools.MaxOutputChars, cfg.Tools.Timeout, auditLogger)); err != nil {
+		if err := registry.Register(tools.NewRunCommandTool(cfg.Tools.AllowedCommands, cfg.Tools.DeniedArgPatterns, cfg.Tools.MaxOutputChars, cfg.Tools.Timeout, auditLogger)); err != nil {
 			slog.Error("register tool", "error", err)
 			os.Exit(1)
 		}
@@ -119,7 +119,9 @@ func main() {
 	}
 
 	// --- MCP tools ---
-	mcpTools := mcp.LoadTools(ctx, cfg.MCP)
+	mcpManager := mcp.LoadTools(ctx, cfg.MCP)
+	defer mcpManager.Close()
+	mcpTools := mcpManager.Tools()
 	for _, mcpTool := range mcpTools {
 		if err := registry.Register(mcpTool); err != nil {
 			slog.Warn("mcp: failed to register tool", "name", mcpTool.Name(), "error", err)

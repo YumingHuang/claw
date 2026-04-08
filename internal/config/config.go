@@ -87,14 +87,15 @@ type RetryConfig struct {
 
 // ToolsConfig holds tools execution configuration.
 type ToolsConfig struct {
-	Workdir         string              `yaml:"workdir"`
-	AllowedCommands []string            `yaml:"allowed_commands"`
-	MaxOutputChars  int                 `yaml:"max_output_chars"`
-	Timeout         time.Duration       `yaml:"timeout"`
-	MaxIterations   int                 `yaml:"max_iterations"`
-	Profiles        map[string][]string `yaml:"profiles"`
-	DefaultProfile  string              `yaml:"default_profile"`
-	TavilyAPIKey    string              `yaml:"tavily_api_key"`
+	Workdir            string              `yaml:"workdir"`
+	AllowedCommands    []string            `yaml:"allowed_commands"`
+	DeniedArgPatterns  []string            `yaml:"denied_arg_patterns"`
+	MaxOutputChars     int                 `yaml:"max_output_chars"`
+	Timeout            time.Duration       `yaml:"timeout"`
+	MaxIterations      int                 `yaml:"max_iterations"`
+	Profiles           map[string][]string `yaml:"profiles"`
+	DefaultProfile     string              `yaml:"default_profile"`
+	TavilyAPIKey       string              `yaml:"tavily_api_key"`
 }
 
 // MCPServerConfig holds configuration for a single MCP server.
@@ -114,11 +115,12 @@ type MCPConfig struct {
 
 // CronJobConfig holds configuration for a single cron job.
 type CronJobConfig struct {
-	Name     string `yaml:"name"`
-	Schedule string `yaml:"schedule"` // cron expression, e.g. "0 18 * * 1-5"
-	Message  string `yaml:"message"`  // message sent to agent
-	Channel  string `yaml:"channel"`  // channel name for session, default "cron"
-	Notify   string `yaml:"notify"`   // notification target, e.g. "feishu:<chat_id>"
+	Name     string        `yaml:"name"`
+	Schedule string        `yaml:"schedule"` // cron expression, e.g. "0 18 * * 1-5"
+	Message  string        `yaml:"message"`  // message sent to agent
+	Channel  string        `yaml:"channel"`  // channel name for session, default "cron"
+	Notify   string        `yaml:"notify"`   // notification target, e.g. "feishu:<chat_id>"
+	Timeout  time.Duration `yaml:"timeout"`  // max execution time per job
 }
 
 // CronConfig holds cron scheduler configuration.
@@ -146,13 +148,14 @@ type WebSocketChannelConfig struct {
 
 // FeishuChannelConfig holds Feishu channel configuration.
 type FeishuChannelConfig struct {
-	Enabled           bool   `yaml:"enabled"`
-	AppID             string `yaml:"app_id"`
-	AppSecret         string `yaml:"app_secret"`
-	VerificationToken string `yaml:"verification_token"`
-	EncryptKey        string `yaml:"encrypt_key"`
-	LongConnection    bool   `yaml:"long_connection"`
-	ThinkingEmoji     string `yaml:"thinking_emoji"`
+	Enabled           bool          `yaml:"enabled"`
+	AppID             string        `yaml:"app_id"`
+	AppSecret         string        `yaml:"app_secret"`
+	VerificationToken string        `yaml:"verification_token"`
+	EncryptKey        string        `yaml:"encrypt_key"`
+	LongConnection    bool          `yaml:"long_connection"`
+	ThinkingEmoji     string        `yaml:"thinking_emoji"`
+	RequestTimeout    time.Duration `yaml:"request_timeout"`
 }
 
 // AuthConfig holds authentication configuration.

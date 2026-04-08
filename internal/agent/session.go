@@ -9,11 +9,12 @@ import (
 
 // Session holds the conversation state for a single user session.
 type Session struct {
-	ID        string
-	Channel   string
+	ID      string
+	Channel string
+
 	messages  []models.Message
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	createdAt time.Time
+	updatedAt time.Time
 	mu        sync.RWMutex
 	onUpdate  func(*Session)
 }
@@ -24,22 +25,16 @@ func NewSession(id, channel string) *Session {
 	return &Session{
 		ID:        id,
 		Channel:   channel,
-		CreatedAt: now,
-		UpdatedAt: now,
+		createdAt: now,
+		updatedAt: now,
 	}
 }
-
-// Lock acquires the session mutex.
-func (s *Session) Lock() { s.mu.Lock() }
-
-// Unlock releases the session mutex.
-func (s *Session) Unlock() { s.mu.Unlock() }
 
 // Append adds a message and updates the timestamp.
 func (s *Session) Append(msg models.Message) {
 	s.mu.Lock()
 	s.messages = append(s.messages, msg)
-	s.UpdatedAt = time.Now()
+	s.updatedAt = time.Now()
 	callback := s.onUpdate
 	s.mu.Unlock()
 	if callback != nil {
@@ -77,6 +72,29 @@ func (s *Session) Rollback(count int) {
 	}
 }
 
+// CreatedAt returns the session creation time.
+func (s *Session) CreatedAt() time.Time {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.createdAt
+}
+
+// UpdatedAt returns the last update time.
+func (s *Session) UpdatedAt() time.Time {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.updatedAt
+}
+
+// SetTimestamps sets both created and updated timestamps (used for hydration from DB).
+func (s *Session) SetTimestamps(createdAt, updatedAt time.Time) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.createdAt = createdAt
+	s.updatedAt = updatedAt
+}
+
+// SetOnUpdate registers a callback invoked after each Append or Rollback.
 func (s *Session) SetOnUpdate(fn func(*Session)) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

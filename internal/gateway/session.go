@@ -78,10 +78,7 @@ func (s *MemorySessionStore) cleanupLoop(ctx context.Context, interval time.Dura
 			now := time.Now()
 			s.sessions.Range(func(key, value interface{}) bool {
 				session := value.(*agent.Session)
-				session.Lock()
-				expired := now.Sub(session.UpdatedAt) > s.ttl
-				session.Unlock()
-				if expired {
+				if now.Sub(session.UpdatedAt()) > s.ttl {
 					s.sessions.Delete(key)
 				}
 				return true

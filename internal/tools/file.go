@@ -102,17 +102,48 @@ func (t *WriteFileTool) Execute(ctx context.Context, params json.RawMessage) (mo
 	return models.ToolResult{Content: fmt.Sprintf("written %d bytes to %s", len(p.Content), p.Path)}, nil
 }
 
-// safePath validates that the requested path stays within the sandbox.
+// safePath validates that the requested path stays within the sandbox,
+// resolving symlinks to prevent escape via symbolic links.
 func safePath(workdir, reqPath string) (string, error) {
 	cleaned := filepath.Clean(reqPath)
 	absPath := filepath.Join(workdir, cleaned)
 
+	// Check the logical path first (before symlink resolution).
 	rel, err := filepath.Rel(workdir, absPath)
-	if err != nil {
+	if err != nil || strings.HasPrefix(rel, "..") {
 		return "", fmt.Errorf("path outside sandbox: %s", reqPath)
 	}
-	if strings.HasPrefix(rel, "..") {
-		return "", fmt.Errorf("path outside sandbox: %s", reqPath)
+
+	// Resolve symlinks on the workdir itself.
+	realWorkdir, err := filepath.EvalSymlinks(workdir)
+	if err != nil {
+		return "", fmt.Errorf("resolve workdir: %w", err)
+	}
+
+	// Try to resolve the full path. If it doesn't exist, walk up to find
+	// the deepest existing ancestor and verify that.
+	realPath, err := filepath.EvalSymlinks(absPath)
+	if err == nil {
+		rel, err = filepath.Rel(realWorkdir, realPath)
+		if err != nil || strings.HasPrefix(rel, "..") {
+			return "", fmt.Errorf("path outside sandbox: %s", reqPath)
+		}
+		return absPath, nil
+	}
+
+	// Path doesn't exist yet — find the deepest existing ancestor.
+	check := absPath
+	for check != realWorkdir && check != filepath.Dir(check) {
+		check = filepath.Dir(check)
+		resolved, err := filepath.EvalSymlinks(check)
+		if err != nil {
+			continue
+		}
+		rel, err = filepath.Rel(realWorkdir, resolved)
+		if err != nil || strings.HasPrefix(rel, "..") {
+			return "", fmt.Errorf("path outside sandbox: %s", reqPath)
+		}
+		return absPath, nil
 	}
 
 	return absPath, nil
