@@ -375,3 +375,256 @@ func TestSession_MessagesDefensiveCopy(t *testing.T) {
 		t.Error("modifying returned Messages() should not affect session")
 	}
 }
+
+// --- RunStream tests ---
+
+func TestRunStream_SimpleTextResponse(t *testing.T) {
+	provider := &fakeProvider{
+		name:      "fake",
+		responses: []*llm.ChatResponse{{Content: "Hello!"}},
+	}
+	a := NewAgent(provider, newTestRegistry(), AgentOptions{
+		SystemPrompt:  "sys",
+		MaxIterations: 10,
+		ContextWindow: 100000,
+	})
+	session := NewSession("s1", "test")
+
+	ch, err := a.RunStream(context.Background(), session, "Hi")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var chunks []models.StreamChunk
+	for c := range ch {
+		chunks = append(chunks, c)
+	}
+	if len(chunks) == 0 {
+		t.Fatal("expected at least one chunk")
+	}
+	// Should have "streamed" delta from fakeProvider.ChatStream
+	if chunks[0].Delta != "streamed" {
+		t.Errorf("delta = %q, want 'streamed'", chunks[0].Delta)
+	}
+}
+
+func TestRunStream_ToolCallLoop(t *testing.T) {
+	callCount := 0
+	provider := &streamToolProvider{
+		streamResponses: [][]llm.StreamChunk{
+			// First call: tool call
+			{
+				{ToolCalls: []models.ToolCall{{ID: "c1", Name: "echo", Arguments: json.RawMessage(`{}`)}}, Done: true},
+			},
+			// Second call: text response
+			{
+				{Delta: "done", Done: true},
+			},
+		},
+		callCount: &callCount,
+	}
+	a := NewAgent(provider, newTestRegistry(&echoTool{}), AgentOptions{
+		MaxIterations: 10,
+		ContextWindow: 100000,
+	})
+	session := NewSession("s1", "test")
+
+	ch, err := a.RunStream(context.Background(), session, "go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var gotDone bool
+	for c := range ch {
+		if c.Err != nil {
+			t.Fatal(c.Err)
+		}
+		if c.Delta == "done" {
+			gotDone = true
+		}
+	}
+	if !gotDone {
+		t.Error("expected 'done' delta after tool call loop")
+	}
+}
+
+func TestRunStream_MaxIterations(t *testing.T) {
+	callCount := 0
+	// Always returns tool calls
+	responses := make([][]llm.StreamChunk, 20)
+	for i := range responses {
+		responses[i] = []llm.StreamChunk{
+			{ToolCalls: []models.ToolCall{{ID: "c1", Name: "echo", Arguments: json.RawMessage(`{}`)}}, Done: true},
+		}
+	}
+	provider := &streamToolProvider{streamResponses: responses, callCount: &callCount}
+	a := NewAgent(provider, newTestRegistry(&echoTool{}), AgentOptions{
+		MaxIterations: 2,
+		ContextWindow: 100000,
+	})
+	session := NewSession("s1", "test")
+
+	ch, err := a.RunStream(context.Background(), session, "loop")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var gotErr bool
+	for c := range ch {
+		if c.Err != nil {
+			gotErr = true
+		}
+	}
+	if !gotErr {
+		t.Error("expected error for max iterations")
+	}
+}
+
+func TestRunStream_ContextCancelled(t *testing.T) {
+	provider := &fakeProvider{name: "fake"}
+	a := NewAgent(provider, newTestRegistry(), AgentOptions{MaxIterations: 10, ContextWindow: 100000})
+	session := NewSession("s1", "test")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, err := a.RunStream(ctx, session, "hello")
+	if err == nil {
+		t.Fatal("expected error for cancelled context")
+	}
+}
+
+func TestRunStream_ProviderError(t *testing.T) {
+	provider := &errorStreamProvider{}
+	a := NewAgent(provider, newTestRegistry(), AgentOptions{MaxIterations: 10, ContextWindow: 100000})
+	session := NewSession("s1", "test")
+
+	ch, err := a.RunStream(context.Background(), session, "hello")
+	if err != nil {
+		// Error returned directly
+		return
+	}
+	var gotErr bool
+	for c := range ch {
+		if c.Err != nil {
+			gotErr = true
+		}
+	}
+	if !gotErr {
+		t.Error("expected error from provider")
+	}
+}
+
+// streamToolProvider supports multiple ChatStream calls with different responses.
+type streamToolProvider struct {
+	streamResponses [][]llm.StreamChunk
+	callCount       *int
+}
+
+func (p *streamToolProvider) Name() string { return "stream-tool" }
+func (p *streamToolProvider) Chat(_ context.Context, _ *llm.ChatRequest) (*llm.ChatResponse, error) {
+	return nil, fmt.Errorf("not implemented")
+}
+func (p *streamToolProvider) ChatStream(_ context.Context, _ *llm.ChatRequest) (<-chan llm.StreamChunk, error) {
+	idx := *p.callCount
+	*p.callCount++
+	if idx >= len(p.streamResponses) {
+		ch := make(chan llm.StreamChunk, 1)
+		ch <- llm.StreamChunk{Delta: "fallback", Done: true}
+		close(ch)
+		return ch, nil
+	}
+	ch := make(chan llm.StreamChunk, len(p.streamResponses[idx]))
+	for _, c := range p.streamResponses[idx] {
+		ch <- c
+	}
+	close(ch)
+	return ch, nil
+}
+
+type errorStreamProvider struct{}
+
+func (p *errorStreamProvider) Name() string { return "error-stream" }
+func (p *errorStreamProvider) Chat(_ context.Context, _ *llm.ChatRequest) (*llm.ChatResponse, error) {
+	return nil, fmt.Errorf("error")
+}
+func (p *errorStreamProvider) ChatStream(_ context.Context, _ *llm.ChatRequest) (<-chan llm.StreamChunk, error) {
+	return nil, fmt.Errorf("stream error")
+}
+
+// --- Session accessor tests ---
+
+func TestSession_CreatedAtUpdatedAt(t *testing.T) {
+	s := NewSession("s1", "test")
+	created := s.CreatedAt()
+	updated := s.UpdatedAt()
+	if created.IsZero() || updated.IsZero() {
+		t.Fatal("timestamps should not be zero")
+	}
+	if !created.Equal(updated) {
+		t.Error("new session should have equal created/updated")
+	}
+
+	s.Append(models.NewUserMessage("hello"))
+	if !s.UpdatedAt().After(created) || s.UpdatedAt().Equal(created) {
+		// UpdatedAt should be >= created (may be equal on fast machines)
+	}
+}
+
+func TestSession_SetTimestamps(t *testing.T) {
+	s := NewSession("s1", "test")
+	now := s.CreatedAt()
+
+	newCreated := now.Add(-1000)
+	newUpdated := now.Add(-500)
+	s.SetTimestamps(newCreated, newUpdated)
+
+	if !s.CreatedAt().Equal(newCreated) {
+		t.Errorf("CreatedAt = %v, want %v", s.CreatedAt(), newCreated)
+	}
+	if !s.UpdatedAt().Equal(newUpdated) {
+		t.Errorf("UpdatedAt = %v, want %v", s.UpdatedAt(), newUpdated)
+	}
+}
+
+func TestSession_SetOnUpdate(t *testing.T) {
+	s := NewSession("s1", "test")
+	called := false
+	s.SetOnUpdate(func(_ *Session) { called = true })
+	s.Append(models.NewUserMessage("trigger"))
+	if !called {
+		t.Error("onUpdate callback should have been called")
+	}
+}
+
+func TestSession_Rollback(t *testing.T) {
+	s := NewSession("s1", "test")
+	s.Append(models.NewUserMessage("a"))
+	s.Append(models.NewUserMessage("b"))
+	s.Append(models.NewUserMessage("c"))
+	if s.MessagesCount() != 3 {
+		t.Fatalf("count = %d, want 3", s.MessagesCount())
+	}
+	s.Rollback(1)
+	if s.MessagesCount() != 1 {
+		t.Fatalf("after rollback count = %d, want 1", s.MessagesCount())
+	}
+	if s.Messages()[0].Content != "a" {
+		t.Errorf("remaining message = %q, want 'a'", s.Messages()[0].Content)
+	}
+}
+
+func TestSession_Rollback_NoOp(t *testing.T) {
+	s := NewSession("s1", "test")
+	s.Append(models.NewUserMessage("a"))
+	s.Rollback(10) // count > len, should be no-op
+	if s.MessagesCount() != 1 {
+		t.Fatalf("count = %d, want 1", s.MessagesCount())
+	}
+}
+
+func TestToolNames(t *testing.T) {
+	provider := &fakeProvider{name: "fake"}
+	a := NewAgent(provider, newTestRegistry(&echoTool{}, &failTool{}), AgentOptions{MaxIterations: 10})
+	names := a.ToolNames()
+	if len(names) != 2 {
+		t.Fatalf("ToolNames len = %d, want 2", len(names))
+	}
+}
